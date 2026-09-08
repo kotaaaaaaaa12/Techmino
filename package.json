@@ -1,0 +1,13 @@
+{
+  "name": "techmino-web-pages",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "node cloudflare/build-web.mjs",
+    "deploy": "wrangler pages deploy dist"
+  },
+  "devDependencies": {
+    "love.js": "11.4.1",
+    "wrangler": "4.129.1"
+  }
+}
