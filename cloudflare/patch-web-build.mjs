@@ -12,7 +12,7 @@ const headAssets = [
   ["webdb.js", '    <script src="webdb.js"></script>'],
   ["persistence.js", '    <script src="persistence.js"></script>'],
   ["client-config.js", '    <script src="client-config.js"></script>'],
-  ["websocket-bridge.js", '    <script src="websocket-bridge.js"></script>'],
+  ["websocket-bridge.js", '    <script src="websocket-bridge.js?v=network-error-1"></script>'],
 ];
 
 for (const [marker, element] of headAssets) {
