@@ -29,6 +29,7 @@ Do not include a trailing slash. This must be the public URL of the separate Tec
 - Supabase anonymous-session refresh recovery
 - Stable guest identity and fallback guest names
 - LÖVE 11.4 compatibility declaration for the Love.js runtime
+- Automatic `game.data` splitting for the Cloudflare Pages file-size limit
 - A cache policy that forces browsers to revalidate updated game files
 
 ## Local build

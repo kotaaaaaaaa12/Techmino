@@ -73,6 +73,7 @@ try {
     "utf8",
   );
 
+  await run(process.execPath, [path.join(projectRoot, "cloudflare/split-game-data.mjs"), outputDirectory]);
   await run(process.execPath, [path.join(projectRoot, "cloudflare/patch-web-build.mjs"), outputDirectory]);
   await run(process.execPath, [path.join(outputDirectory, "globalizeFS.js")], { cwd: outputDirectory });
   await rm(path.join(outputDirectory, "globalizeFS.js"));
