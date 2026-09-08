@@ -11,7 +11,7 @@ Merge this overlay into the root of a clean Techmino clone while preserving the 
 | Setting | Value |
 | --- | --- |
 | Root directory | Repository root |
-| Build command | `npm ci && npm run build` |
+| Build command | `npm run build` |
 | Build output directory | `dist` |
 
 Add this build-time environment variable:
