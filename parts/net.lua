@@ -442,18 +442,21 @@ function NET.wsCallBack.room_create(body)
     MES.new('check',text.createRoomSuccessed)
     WAIT.interrupt()
 
-    -- A fast server response can arrive while the room creation scene is
-    -- still finishing its transition. SCN.go ignores requests during an
-    -- active transition, so defer entering the lobby until it is idle.
+    if type(body.data)~='table' or type(body.data.roomId)~='string' then
+        MES.new('error','The room was created, but the server did not return a room ID.',5)
+        return
+    end
+
+    local roomId=body.data.roomId
+
+    -- Fetch the room through the same Room Join response path used by other
+    -- players. This avoids relying on a Room Create response to initialize
+    -- the lobby and also refreshes the authoritative player list.
     TASK.new(function()
         while SCN.swapping do
             TEST.yieldT(.01)
         end
-
-        if SCN.cur=='net_newRoom' then
-            SCN.pop()
-        end
-        NET.wsCallBack.room_enter(body)
+        NET.room_enter(roomId)
     end)
 end
 function NET.wsCallBack.room_getData(body)
@@ -471,7 +474,12 @@ end
 function NET.wsCallBack.room_enter(body)
     TASK.unlock('enterRoom')
 
-    if body.data.players then
+    if type(body.data)=='table' and type(body.data.players)=='table' then
+        if SCN.cur=='net_newRoom' then
+            WAIT.interrupt()
+            SCN.pop()
+        end
+
         NET.textBox.hide=true
         NET.inputBox.hide=true
         NET.textBox:clear()
@@ -601,16 +609,26 @@ function NET.wsCallBack.match_finish()
         TASK.unlock('netPlaying')
     end)
 end
-function NET.wsCallBack.match_ready()-- not used
-end
-function NET.wsCallBack.match_start(body)
-    if SCN.cur~='net_game' then return end
-    TASK.lock('netPlaying')
-    NET.seed=body.data and body.data.seed
-    if not NET.seed then
+local function beginNetMatch(body)
+    local receivedSeed=body.data and body.data.seed
+    if receivedSeed then
+        NET.seed=receivedSeed
+    elseif not NET.seed then
         NET.seed=0
         MES.new("error",'No seed received')
     end
+
+    -- Keep the start signal pending while a scene transition is finishing.
+    -- The net_game scene consumes this lock and starts the match.
+    if not TASK.getLock('netPlaying') then
+        TASK.lock('netPlaying')
+    end
+end
+function NET.wsCallBack.match_ready(body)
+    beginNetMatch(body)
+end
+function NET.wsCallBack.match_start(body)
+    beginNetMatch(body)
 end
 
 function NET.ws_connect()
