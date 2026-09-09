@@ -440,9 +440,21 @@ function NET.wsCallBack.room_chat(body)
 end
 function NET.wsCallBack.room_create(body)
     MES.new('check',text.createRoomSuccessed)
-    SCN.pop()
-    NET.wsCallBack.room_enter(body)
     WAIT.interrupt()
+
+    -- A fast server response can arrive while the room creation scene is
+    -- still finishing its transition. SCN.go ignores requests during an
+    -- active transition, so defer entering the lobby until it is idle.
+    TASK.new(function()
+        while SCN.swapping do
+            TEST.yieldT(.01)
+        end
+
+        if SCN.cur=='net_newRoom' then
+            SCN.pop()
+        end
+        NET.wsCallBack.room_enter(body)
+    end)
 end
 function NET.wsCallBack.room_getData(body)
     NET.roomState.data=body.data
