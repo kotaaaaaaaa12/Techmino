@@ -75,6 +75,8 @@ function scene.enter()
     DiscordRPC.update("Playing Multiplayer")
 end
 function scene.leave()
+    NET.matchCountdownEnd=false
+    NET.matchStartToken=(NET.matchStartToken or 0)+1
     TASK.unlock('netPlaying')
 end
 
@@ -375,6 +377,15 @@ function scene.draw()
         if NET.roomAllReady then
             gc_setColor(.6,.95,1,.9)
             mStr(text.ready,640,15)
+        end
+
+        if NET.matchCountdownEnd then
+            local count=math.ceil(NET.matchCountdownEnd-love.timer.getTime())
+            if count>0 then
+                setFont(120)
+                gc_setColor(1,1,1)
+                mStr(tostring(count),640,300)
+            end
         end
 
         -- Profile

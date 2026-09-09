@@ -599,17 +599,36 @@ function NET.wsCallBack.player_setReadyMode(body)
     NETPLY.map[body.data.playerId].readyMode=body.data.isReady and 'Ready' or 'Standby'
     NET.freshRoomAllReady()
 end
-function NET.wsCallBack.match_finish()
+function NET.wsCallBack.match_finish(body)
     if SCN.cur~='net_game' then return end
+
+    local winnerMap={}
+    if body.data and type(body.data.winnerIds)=='table' then
+        for _,uid in next,body.data.winnerIds do
+            winnerMap[uid]=true
+        end
+    end
+
+    local wasNet=GAME.net
+    GAME.net=false
     for _,P in next,PLAYERS do
+        if winnerMap[P.uid] then
+            P:win()
+        elseif not P.result then
+            P:lose(true)
+        end
         NETPLY.setStat(P.uid,P.stat)
     end
+    GAME.net=wasNet
+
+    NET.matchCountdownEnd=false
+    NET.matchStartToken=(NET.matchStartToken or 0)+1
     TASK.new(function()
         TEST.yieldT(2.6)
         TASK.unlock('netPlaying')
     end)
 end
-local function beginNetMatch(body)
+local function storeNetMatchSeed(body)
     local receivedSeed=body.data and body.data.seed
     if receivedSeed then
         NET.seed=receivedSeed
@@ -617,7 +636,11 @@ local function beginNetMatch(body)
         NET.seed=0
         MES.new("error",'No seed received')
     end
+end
 
+local function beginNetMatch(body)
+    storeNetMatchSeed(body)
+    NET.matchCountdownEnd=false
     -- Keep the start signal pending while a scene transition is finishing.
     -- The net_game scene consumes this lock and starts the match.
     if not TASK.getLock('netPlaying') then
@@ -625,9 +648,21 @@ local function beginNetMatch(body)
     end
 end
 function NET.wsCallBack.match_ready(body)
-    beginNetMatch(body)
+    storeNetMatchSeed(body)
+    NET.matchCountdownEnd=love.timer.getTime()+3
+    NET.matchStartToken=(NET.matchStartToken or 0)+1
+    local token=NET.matchStartToken
+
+    -- Start locally only if the final start message is lost.
+    TASK.new(function()
+        TEST.yieldT(3.5)
+        if NET.matchStartToken==token and NET.matchCountdownEnd then
+            beginNetMatch(body)
+        end
+    end)
 end
 function NET.wsCallBack.match_start(body)
+    NET.matchStartToken=(NET.matchStartToken or 0)+1
     beginNetMatch(body)
 end
 
