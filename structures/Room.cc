@@ -1,0 +1,452 @@
+//
+// Created by particleg on 2021/10/8.
+//
+
+#include <magic_enum.hpp>
+#include <plugins/RoomManager.h>
+#include <structures/ExceptionHandlers.h>
+#include <structures/Player.h>
+#include <structures/Room.h>
+#include <types/Action.h>
+#include <types/ErrorNumber.h>
+#include <utils/crypto.h>
+
+
+using namespace drogon;
+using namespace magic_enum;
+using namespace std;
+using namespace techmino::helpers;
+using namespace techmino::plugins;
+using namespace techmino::structures;
+using namespace techmino::types;
+using namespace techmino::utils;
+using namespace trantor;
+
+Room::Room(
+        uint64_t capacity,
+        const string &password,
+        Json::Value info,
+        Json::Value data
+) : capacity(capacity),
+    seed(data::randomUniform()),
+    _info(std::move(info)),
+    _data(std::move(data)) {
+    if (!password.empty()) {
+        _passwordHash = crypto::blake2B(password);
+    }
+    _data.canSkip(true);
+    _data.canOverwrite(true);
+    _cleanTimerId = app().getLoop()->runEvery(chrono::seconds(60), [this] {
+        if (_needClean) {
+            clean();
+        }
+    });
+}
+
+Room::~Room() {
+    app().getLoop()->invalidateTimer(_cleanTimerId);
+    cancelStart();
+    matchTryEnd(true);
+    for (const auto &[playerId, wsConnRef]: _playerMap) {
+        if (auto wsConnPtr = wsConnRef.lock()) {
+            wsConnPtr->getContext<Player>()->reset();
+            MessageJson(enum_integer(Action::RoomRemove)).to(wsConnPtr);
+        } else {
+            _needClean = true;
+        }
+    }
+}
+
+bool Room::empty(bool all) {
+    if (all) {
+        shared_lock<shared_mutex> lock(_playerMutex);
+        return _playerMap.empty();
+    } else {
+        return countGamer() == 0;
+    }
+}
+
+bool Room::full() { return countGamer() >= capacity; }
+
+bool Room::checkPassword(const string &password) const {
+    shared_lock<shared_mutex> lock(_dataMutex);
+    if (_passwordHash.empty() && password.empty()) {
+        return true;
+    }
+    return crypto::blake2B(password) == _passwordHash;
+}
+
+void Room::updatePassword(const string &password) {
+    unique_lock<shared_mutex> lock(_dataMutex);
+    if (password.empty()) {
+        _passwordHash.clear();
+    } else {
+        _passwordHash = crypto::blake2B(password);
+    }
+}
+
+void Room::subscribe(const WebSocketConnectionPtr &wsConnPtr) {
+    {
+        unique_lock<shared_mutex> lock(_playerMutex);
+        _playerMap.emplace(wsConnPtr->getContext<Player>()->playerId, wsConnPtr);
+    }
+    cancelStart();
+}
+
+void Room::unsubscribe(int64_t playerId, optional<MessageJson> &&message) {
+    Player::Role role{Player::Role::Normal};
+    Player::Type type{Player::Type::Spectator};
+    {
+        unique_lock<shared_mutex> lock(_playerMutex);
+        const auto node = _playerMap.extract(playerId);
+        if (!node.empty()) {
+            if (const auto &wsConnPtr = node.mapped().lock()) {
+                const auto player = wsConnPtr->getContext<Player>();
+                role = player->role;
+                type = player->type;
+                LOG_DEBUG << "Player " << playerId << " left room with type: " << enum_name(type);
+            }
+        }
+    }
+
+    NO_EXCEPTION(
+            if (role > Player::Role::Normal) {
+                const auto targetPlayer = _connectionManager->getConnPtr(
+                        getFirstPlayerId()
+                )->getContext<Player>();
+                targetPlayer->role = role;
+
+                Json::Value data;
+                data["playerId"] = targetPlayer->playerId;
+                data["role"] = string(enum_name(role));
+                publish(MessageJson(enum_integer(Action::PlayerRole)).setData(data));
+            }
+    )
+
+    if (message.has_value()) {
+        publish(message.value());
+    }
+
+    if (empty(true)) {
+        app().getPlugin<RoomManager>()->removeRoom(roomId);
+    } else if (type == Player::Type::Gamer) {
+        matchTryStart();
+        matchTryEnd();
+    }
+}
+
+int64_t Room::getFirstPlayerId() {
+    for (const auto &[targetId, wsConnRef]: _playerMap) {
+        if (auto wsConnPtr = wsConnRef.lock()) {
+            return wsConnPtr->getContext<Player>()->playerId;
+        }
+    }
+    return -1;
+}
+
+Json::Value Room::parse(bool details) {
+    Json::Value result;
+    result["roomId"] = roomId;
+    result["capacity"] = capacity.load();
+    result["count"]["Gamer"] = countGamer();
+    result["count"]["Spectator"] = countSpectator();
+
+    const auto tempState = state.load();
+    if (tempState == State::Playing) {
+        result["seed"] = seed.load();
+    }
+    result["state"] = string(enum_name(tempState));
+
+    {
+        shared_lock<shared_mutex> dataLock(_dataMutex);
+        result["private"] = !_passwordHash.empty();
+        result["info"] = _info.copy();
+        if (details) {
+            result["data"] = _data.copy();
+        }
+    }
+
+    if (details) {
+        result["players"] = Json::arrayValue;
+        result["chats"] = Json::arrayValue;
+        {
+            shared_lock<shared_mutex> playerLock(_playerMutex);
+            for (const auto &[playerId, wsConnRef]: _playerMap) {
+                if (auto wsConnPtr = wsConnRef.lock()) {
+                    result["players"].append(wsConnPtr->getContext<Player>()->info());
+                } else {
+                    _needClean = true;
+                }
+            }
+        }
+        {
+            shared_lock<shared_mutex> lock(_chatMutex);
+            for (const auto &chat: _chatList) {
+                result["chats"].append(chat);
+            }
+        }
+    }
+
+    return result;
+}
+
+void Room::publish(const MessageJson &message, int64_t excludedId) {
+    shared_lock<shared_mutex> lock(_playerMutex);
+    for (const auto &[playerId, wsConnRef]: _playerMap) {
+        if (excludedId != playerId) {
+            if (auto wsConnPtr = wsConnRef.lock()) {
+                message.to(wsConnPtr);
+            } else {
+                _needClean = true;
+            }
+        }
+    }
+}
+
+Json::Value Room::getData() const {
+    shared_lock<shared_mutex> lock(_dataMutex);
+    return _data.copy();
+}
+
+Json::Value Room::updateData(const Json::Value &data) {
+    shared_lock<shared_mutex> lock(_dataMutex);
+    for (const auto &item: data) {
+        _data.modifyByPath(item["path"].asString(), item["value"]);
+    }
+    return _data.copy();
+}
+
+Json::Value Room::getInfo() const {
+    shared_lock<shared_mutex> lock(_dataMutex);
+    return _info.copy();
+}
+
+Json::Value Room::updateInfo(const Json::Value &data) {
+    shared_lock<shared_mutex> lock(_dataMutex);
+    for (const auto &item: data) {
+        _info.modifyByPath(item["path"].asString(), item["value"]);
+    }
+    return _info.copy();
+}
+
+void Room::appendChat(Json::Value &&chat) {
+    unique_lock<shared_mutex> lock(_chatMutex);
+    _chatList.push_back(std::move(chat));
+}
+
+void Room::matchTryStart(bool force) {
+    if (!(force || isAllReady())) {
+        LOG_INFO << "TECHRATER_MATCH_WAITING roomId=" << roomId
+                 << " state=" << enum_name(state.load());
+        return;
+    }
+
+    auto expected = State::Standby;
+    if (!state.compare_exchange_strong(expected, State::Ready)) {
+        LOG_INFO << "TECHRATER_MATCH_START_SKIPPED roomId=" << roomId
+                 << " state=" << enum_name(expected);
+        return;
+    }
+
+    LOG_INFO << "TECHRATER_MATCH_STARTING roomId=" << roomId
+             << " seed=" << seed.load();
+    Json::Value data;
+    data["seed"] = seed.load();
+    publish(MessageJson(enum_integer(Action::MatchReady)).setData(data));
+
+    _startTimerId = app().getLoop()->runAfter(3, [this]() {
+        auto expectedState = State::Ready;
+        if (!state.compare_exchange_strong(expectedState, State::Playing)) {
+            LOG_INFO << "TECHRATER_MATCH_COUNTDOWN_CANCELLED roomId=" << roomId
+                     << " state=" << enum_name(expectedState);
+            return;
+        }
+
+        {
+            shared_lock<shared_mutex> lock(_playerMutex);
+            for (const auto &[playerId, wsConnRef]: _playerMap) {
+                if (auto wsConnPtr = wsConnRef.lock()) {
+                    const auto &player = wsConnPtr->getContext<Player>();
+                    if (player->type == Player::Type::Gamer) {
+                        player->state = Player::State::Playing;
+                    }
+                } else {
+                    _needClean = true;
+                }
+            }
+        }
+
+        Json::Value startData;
+        startData["seed"] = seed.load();
+        publish(MessageJson(enum_integer(Action::MatchStart)).setData(startData));
+        LOG_INFO << "TECHRATER_MATCH_STARTED roomId=" << roomId;
+    });
+}
+
+bool Room::cancelStart() {
+    if (state == State::Ready) {
+        app().getLoop()->invalidateTimer(_startTimerId.load());
+        state = State::Standby;
+        return true;
+    }
+    return false;
+}
+
+void Room::matchTryEnd(bool force) {
+    if (state != State::Playing) {
+        return;
+    }
+
+    if (!force) {
+        if (countRemaining() > 1) {
+            return;
+        }
+    }
+
+    auto expectedState = State::Playing;
+    if (!state.compare_exchange_strong(expectedState, State::Standby)) {
+        return;
+    }
+
+    Json::Value resultData;
+    resultData["winnerIds"] = Json::Value(Json::arrayValue);
+
+    {
+        shared_lock<shared_mutex> lock(_playerMutex);
+        optional<uint64_t> winningGroup;
+        optional<int64_t> winningPlayer;
+
+        for (const auto &[playerId, wsConnRef]: _playerMap) {
+            if (const auto wsConnPtr = wsConnRef.lock()) {
+                const auto &player = wsConnPtr->getContext<Player>();
+                if (player->type == Player::Type::Gamer && player->state == Player::State::Playing) {
+                    if (player->group.load() > 0) {
+                        winningGroup = player->group.load();
+                    } else {
+                        winningPlayer = playerId;
+                    }
+                    break;
+                }
+            }
+        }
+
+        for (const auto &[playerId, wsConnRef]: _playerMap) {
+            if (const auto wsConnPtr = wsConnRef.lock()) {
+                const auto &player = wsConnPtr->getContext<Player>();
+                const bool winner = player->type == Player::Type::Gamer &&
+                                    player->state == Player::State::Playing &&
+                                    ((winningGroup && player->group.load() == *winningGroup) ||
+                                     (winningPlayer && playerId == *winningPlayer));
+                if (winner) {
+                    resultData["winnerIds"].append(Json::Int64(playerId));
+                }
+            }
+        }
+    }
+
+    seed = data::randomUniform();
+    {
+        shared_lock<shared_mutex> lock(_playerMutex);
+        for (const auto &[playerId, wsConnRef]: _playerMap) {
+            if (auto wsConnPtr = wsConnRef.lock()) {
+                const auto &player = wsConnPtr->getContext<Player>();
+                player->state = Player::State::Standby;
+                player->clearHistory();
+            } else {
+                _needClean = true;
+            }
+        }
+    }
+
+    LOG_INFO << "TECHRATER_MATCH_ENDED roomId=" << roomId
+             << " winners=" << resultData["winnerIds"].size();
+    publish(MessageJson(enum_integer(Action::MatchEnd)).setData(resultData));
+}
+
+uint64_t Room::countGamer() {
+    shared_lock<shared_mutex> lock(_playerMutex);
+    return count_if(_playerMap.begin(), _playerMap.end(), [&](const auto &item) {
+        const auto &[playerId, wsConnRef] = item;
+        if (const auto &wsConnPtr = wsConnRef.lock()) {
+            const auto &player = wsConnPtr->template getContext<Player>();
+            return player->type == Player::Type::Gamer;
+        } else {
+            _needClean = true;
+        }
+        return false;
+    });
+}
+
+uint64_t Room::countRemaining() {
+    unordered_set<uint64_t> groupSet;
+    shared_lock<shared_mutex> lock(_playerMutex);
+    return count_if(_playerMap.begin(), _playerMap.end(), [&](const auto &item) {
+        const auto &[playerId, wsConnRef] = item;
+        if (const auto &wsConnPtr = wsConnRef.lock()) {
+            const auto &player = wsConnPtr->template getContext<Player>();
+            if (player->state == Player::State::Playing) {
+                if (player->group > 0) {
+                    const auto [_, result] = groupSet.insert(player->group);
+                    return result;
+                }
+                return true;
+            }
+        } else {
+            _needClean = true;
+        }
+        return false;
+    });
+}
+
+uint64_t Room::countSpectator() {
+    shared_lock<shared_mutex> lock(_playerMutex);
+    return count_if(_playerMap.begin(), _playerMap.end(), [&](const auto &item) {
+        const auto &[playerId, wsConnRef] = item;
+        if (const auto &wsConnPtr = wsConnRef.lock()) {
+            const auto &player = wsConnPtr->template getContext<Player>();
+            return player->type == Player::Type::Spectator;
+        } else {
+            _needClean = true;
+        }
+        return true;
+    });
+}
+
+bool Room::isAllReady() {
+    uint64_t gamerCount = 0;
+    uint64_t readyCount = 0;
+    shared_lock<shared_mutex> lock(_playerMutex);
+    for (const auto &item: _playerMap) {
+        const auto &[playerId, wsConnRef] = item;
+        if (const auto &wsConnPtr = wsConnRef.lock()) {
+            const auto &player = wsConnPtr->template getContext<Player>();
+            if (player->type == Player::Type::Gamer) {
+                ++gamerCount;
+                if (player->state == Player::State::Ready) {
+                    ++readyCount;
+                }
+            }
+        } else {
+            _needClean = true;
+        }
+    }
+
+    LOG_INFO << "TECHRATER_READY_CHECK roomId=" << roomId
+             << " gamers=" << gamerCount
+             << " ready=" << readyCount
+             << " capacity=" << capacity.load();
+    return gamerCount > 0 && gamerCount == readyCount;
+}
+
+void Room::clean() {
+    {
+        unique_lock<shared_mutex> lock(_playerMutex);
+        erase_if(_playerMap, [](const auto &item) {
+            const auto &[playerId, wsConnRef] = item;
+            return wsConnRef.expired();
+        });
+    }
+    if (empty(true)) {
+        app().getPlugin<RoomManager>()->removeRoom(roomId);
+    }
+}
