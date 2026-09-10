@@ -569,14 +569,8 @@ local function samePlayerId(a,b)
     local numberA,numberB=tonumber(a),tonumber(b)
     return numberA~=nil and numberB~=nil and numberA==numberB
 end
-local function netRoundFinished()
-    if #PLY_ALIVE<=1 then return true end
-    local group=PLY_ALIVE[1].group
-    if not group or group==0 then return false end
-    for i=2,#PLY_ALIVE do
-        if PLY_ALIVE[i].group~=group then return false end
-    end
-    return true
+local function playerIdKey(id)
+    return tostring(tonumber(id) or id)
 end
 local function returnToLobbyAfterResult()
     local deadline=love.timer.getTime()+2.6
@@ -584,18 +578,73 @@ local function returnToLobbyAfterResult()
         NET.returnToLobbyAt=deadline
     end
 end
+local function setAuthoritativeResult(P,isWinner)
+    if P.alive then P:_die() end
+    P.control=false
+    P.timing=false
+    P.waiting=1e99
+    P.result=isWinner and 'win' or 'lose'
+    P.bonus={}
+    P:_showText(isWinner and text.win or text.lose,0,0,90,'beat',.5,.2)
+
+    if P.type=='human' then
+        GAME.result=isWinner and 'gamewin' or 'gameover'
+        if isWinner then
+            SFX.play('win')
+            VOC.play('win')
+        end
+    end
+end
+local function applyAuthoritativeMatchResult(winnerMap)
+    NET.matchResultActive=true
+    local wasNet=GAME.net
+    GAME.net=false
+    TABLE.cut(PLY_ALIVE)
+    for _,P in next,PLAYERS do
+        local isWinner=winnerMap[playerIdKey(P.uid)] and true or false
+        setAuthoritativeResult(P,isWinner)
+        if isWinner then PLY_ALIVE[#PLY_ALIVE+1]=P end
+        NETPLY.setStat(P.uid,P.stat)
+    end
+    GAME.net=wasNet
+    returnToLobbyAfterResult()
+end
+local function inferWinnerMap()
+    local competitors={}
+    local winnerMap={}
+    local competitorCount=0
+
+    for _,P in next,PLAYERS do
+        if not NET.finishedPlayers[playerIdKey(P.uid)] then
+            local competitorKey
+            if P.group and P.group>0 then
+                competitorKey='group:'..P.group
+            else
+                competitorKey='player:'..playerIdKey(P.uid)
+            end
+            if not competitors[competitorKey] then
+                competitors[competitorKey]=true
+                competitorCount=competitorCount+1
+            end
+            winnerMap[playerIdKey(P.uid)]=true
+        end
+    end
+    if competitorCount==1 then return winnerMap end
+end
 function NET.wsCallBack.player_finish(body)
     if SCN.cur~='net_game' then return end
     local playerId=body.data and body.data.playerId
     if playerId==nil then return end
+    NET.finishedPlayers[playerIdKey(playerId)]=true
     for _,P in next,PLAYERS do
         if samePlayerId(P.uid,playerId) then
             NETPLY.setPlace(P.uid,#PLY_ALIVE)
-            if not P.result then P:lose(true) end
+            setAuthoritativeResult(P,false)
             break
         end
     end
-    if netRoundFinished() then returnToLobbyAfterResult() end
+    local winnerMap=inferWinnerMap()
+    if winnerMap then applyAuthoritativeMatchResult(winnerMap) end
 end
 function NET.wsCallBack.player_joinGroup(body)
     if SCN.cur~='net_game' then return end
@@ -630,33 +679,13 @@ function NET.wsCallBack.match_finish(body)
     local winnerMap={}
     if body.data and type(body.data.winnerIds)=='table' then
         for _,uid in next,body.data.winnerIds do
-            winnerMap[tonumber(uid) or uid]=true
+            winnerMap[playerIdKey(uid)]=true
         end
     end
-
-    local wasNet=GAME.net
-    GAME.net=false
-    for _,P in next,PLAYERS do
-        local isWinner=winnerMap[tonumber(P.uid) or P.uid] and true or false
-        local expectedResult=isWinner and 'win' or 'lose'
-        if not P.result then
-            if isWinner then P:win() else P:lose(true) end
-        elseif P.result~=expectedResult then
-            -- The server owns the final result. Correct any prediction made by
-            -- replaying a remote board before the authoritative result arrived.
-            P.result=expectedResult
-            if P.type=='human' then
-                GAME.result=isWinner and 'gamewin' or 'gameover'
-            end
-            P:_showText(isWinner and text.win or text.lose,0,0,90,'beat',.5,.2)
-        end
-        NETPLY.setStat(P.uid,P.stat)
-    end
-    GAME.net=wasNet
+    applyAuthoritativeMatchResult(winnerMap)
 
     NET.matchCountdownEnd=false
     NET.matchStartToken=(NET.matchStartToken or 0)+1
-    returnToLobbyAfterResult()
 end
 local function storeNetMatchSeed(body)
     local receivedSeed=body.data and body.data.seed
@@ -671,6 +700,8 @@ end
 local function beginNetMatch(body)
     storeNetMatchSeed(body)
     NET.finishReported=false
+    NET.finishedPlayers={}
+    NET.matchResultActive=false
     NET.returnToLobbyAt=false
     NET.matchCountdownEnd=false
     -- Keep the start signal pending while a scene transition is finishing.

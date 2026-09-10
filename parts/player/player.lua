@@ -3189,6 +3189,10 @@ function Player:lose(force)
         self:newTask(task_lose)
     end
 
+    -- Multiplayer results are authoritative. A replayed remote board must not
+    -- decide the winner independently on each client.
+    if GAME.net then return end
+
     if #PLY_ALIVE>0 then
         self:dropPosition()
         freshPlayerPosition('update')

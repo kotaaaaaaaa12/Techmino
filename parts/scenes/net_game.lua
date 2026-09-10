@@ -64,6 +64,7 @@ function scene.enter()
     playing=false
     lastUpstreamTime=0
     upstreamProgress=1
+    NET.matchResultActive=false
 
     if SCN.prev=='setting_game' then
         NET.player_updateConf()
@@ -76,6 +77,7 @@ function scene.enter()
 end
 function scene.leave()
     NET.matchCountdownEnd=false
+    NET.matchResultActive=false
     NET.returnToLobbyAt=false
     NET.matchStartToken=(NET.matchStartToken or 0)+1
     TASK.unlock('netPlaying')
@@ -85,7 +87,7 @@ scene.mouseDown=NULL
 function scene.mouseMove(x,y) NETPLY.mouseMove(x,y) end
 function scene.touchDown(x,y)
     if not playing then NETPLY.mouseMove(x,y) return end
-    if NET.spectate or noTouch or not textBox.hide then return end
+    if NET.matchResultActive or NET.spectate or noTouch or not textBox.hide then return end
 
     local t=VK.on(x,y)
     if t then
@@ -94,7 +96,7 @@ function scene.touchDown(x,y)
     end
 end
 function scene.touchUp(x,y)
-    if not playing or NET.spectate or noTouch or not textBox.hide then return end
+    if not playing or NET.matchResultActive or NET.spectate or noTouch or not textBox.hide then return end
     local n=VK.on(x,y)
     if n then
         PLAYERS[1]:releaseKey(n)
@@ -102,7 +104,7 @@ function scene.touchUp(x,y)
     end
 end
 function scene.touchMove()
-    if touchMoveLastFrame or not playing or noTouch then return end
+    if touchMoveLastFrame or not playing or NET.matchResultActive or noTouch then return end
     touchMoveLastFrame=true
 
     local L=tc.getTouches()
@@ -187,6 +189,7 @@ function scene.keyDown(key,isRep)
         WIDGET.focus(inputBox)
         inputBox:keypress(key)
     elseif playing then
+        if NET.matchResultActive then return end
         if NET.spectate or noKey or isRep then return end
         local k=KEY_MAP.keyboard[key]
         if k and k>0 then
@@ -206,7 +209,7 @@ function scene.keyDown(key,isRep)
     end
 end
 function scene.keyUp(key)
-    if not playing or NET.spectate or noKey then return end
+    if not playing or NET.matchResultActive or NET.spectate or noKey then return end
     local k=KEY_MAP.keyboard[key]
     if k and k>0 then
         PLAYERS[1]:releaseKey(k)
@@ -217,7 +220,7 @@ function scene.gamepadDown(key)
     if key=='back' then
         scene.keyDown('escape')
     else
-        if not playing then return end
+        if not playing or NET.matchResultActive then return end
         local k=KEY_MAP.joystick[key]
         if k and k>0 then
             PLAYERS[1]:pressKey(k)
@@ -226,7 +229,7 @@ function scene.gamepadDown(key)
     end
 end
 function scene.gamepadUp(key)
-    if not playing then return end
+    if not playing or NET.matchResultActive then return end
     local k=KEY_MAP.joystick[key]
     if k and k>0 then
         PLAYERS[1]:releaseKey(k)
@@ -244,6 +247,15 @@ function scene.update(dt)
     if playing and NET.returnToLobbyAt and love.timer.getTime()>=NET.returnToLobbyAt then
         NET.returnToLobbyAt=false
         TASK.unlock('netPlaying')
+        NET.matchResultActive=false
+        playing=false
+        BG.set()
+        for i=1,#NETPLY.list do
+            NETPLY.list[i].readyMode='Standby'
+        end
+        NETPLY.freshPos()
+        NET.freshRoomAllReady()
+        return
     end
     if playing then
         if not TASK.getLock('netPlaying') then
@@ -256,6 +268,7 @@ function scene.update(dt)
             NET.freshRoomAllReady()
             return
         else
+            if NET.matchResultActive then return end
             touchMoveLastFrame=false
             VK.update(dt)
 
