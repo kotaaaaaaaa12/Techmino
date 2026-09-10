@@ -76,6 +76,7 @@ function scene.enter()
 end
 function scene.leave()
     NET.matchCountdownEnd=false
+    NET.returnToLobbyAt=false
     NET.matchStartToken=(NET.matchStartToken or 0)+1
     TASK.unlock('netPlaying')
 end
@@ -239,6 +240,10 @@ function scene.update(dt)
         NET.ws_close()
         SCN.back()
         return
+    end
+    if playing and NET.returnToLobbyAt and love.timer.getTime()>=NET.returnToLobbyAt then
+        NET.returnToLobbyAt=false
+        TASK.unlock('netPlaying')
     end
     if playing then
         if not TASK.getLock('netPlaying') then
