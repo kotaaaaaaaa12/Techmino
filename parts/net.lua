@@ -258,7 +258,11 @@ local actMap={
     room_fetch=            1309,
     room_setPW=            1310,
     room_remove=           1311,
-} for k,v in next,actMap do actMap[v]=k end
+}
+local actNameMap={}
+for name,action in next,actMap do
+    actNameMap[action]=name
+end
 
 local function wsSend(act,data)
     -- print(("Send: $1 -->"):repD(act))
@@ -815,7 +819,8 @@ function NET.ws_update()
                 if msg.errno~=0 then
                     parseError(msg.message~=nil and msg.message or msg)
                 else
-                    local f=NET.wsCallBack[actMap[msg.action]]
+                    local actionName=actNameMap[tonumber(msg.action) or msg.action]
+                    local f=NET.wsCallBack[actionName]
                     if f then f(msg) end
                 end
             else
