@@ -268,7 +268,12 @@ function scene.update(dt)
             NET.freshRoomAllReady()
             return
         else
-            if NET.matchResultActive then return end
+            if NET.matchResultActive then
+                -- Keep the built-in WIN/LOSE text and board animations moving
+                -- while gameplay input and network streaming remain stopped.
+                for p=1,#PLAYERS do PLAYERS[p]:update(dt) end
+                return
+            end
             touchMoveLastFrame=false
             VK.update(dt)
 

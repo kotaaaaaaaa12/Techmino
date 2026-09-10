@@ -583,21 +583,16 @@ local function returnToLobbyAfterResult()
     end
 end
 local function setAuthoritativeResult(P,isWinner)
-    if P.alive then P:_die() end
-    P.control=false
-    P.timing=false
-    P.waiting=1e99
-    P.result=isWinner and 'win' or 'lose'
+    local wasNet=GAME.net
+    GAME.net=false
+    P.result=false
     P.bonus={}
-    P:_showText(isWinner and text.win or text.lose,0,0,90,'beat',.5,.2)
-
-    if P.type=='human' then
-        GAME.result=isWinner and 'gamewin' or 'gameover'
-        if isWinner then
-            SFX.play('win')
-            VOC.play('win')
-        end
+    if isWinner then
+        P:win()
+    else
+        P:lose(true,true)
     end
+    GAME.net=wasNet
 end
 local function applyAuthoritativeMatchResult(winnerMap)
     NET.matchResultActive=true

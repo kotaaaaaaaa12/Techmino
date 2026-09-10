@@ -2,7 +2,10 @@ import { open, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const outputDirectory = process.argv[2];
-if (!outputDirectory) throw new Error("Usage: node split-game-data.mjs <output directory>");
+const buildId = process.argv[3];
+if (!outputDirectory || !buildId) {
+  throw new Error("Usage: node split-game-data.mjs <output directory> <build ID>");
+}
 
 const chunkSize = 20 * 1024 * 1024;
 const dataPath = path.join(outputDirectory, "game.data");
@@ -50,6 +53,7 @@ if (dataSize > chunkSize) {
 
   const replacement = `    function fetchRemotePackage(packageName, packageSize, callback, errback) {
       var partNames = ${JSON.stringify(partNames)};
+      var packageVersion = ${JSON.stringify(buildId)};
 
       (async function() {
         var packageBytes = new Uint8Array(packageSize);
@@ -63,9 +67,13 @@ if (dataSize > chunkSize) {
         }
 
         for (var index = 0; index < partNames.length; index++) {
-          var partUrl = new URL(partNames[index], packageUrl).href;
-          var response = await fetch(partUrl, { credentials: 'same-origin' });
-          if (!response.ok) throw new Error(response.status + ' : ' + partUrl);
+          var partUrl = new URL(partNames[index], packageUrl);
+          partUrl.searchParams.set('v', packageVersion);
+          var response = await fetch(partUrl.href, {
+            credentials: 'same-origin',
+            cache: 'no-store'
+          });
+          if (!response.ok) throw new Error(response.status + ' : ' + partUrl.href);
 
           if (response.body && typeof response.body.getReader === 'function') {
             var reader = response.body.getReader();

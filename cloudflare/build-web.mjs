@@ -1,5 +1,6 @@
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,6 +8,7 @@ import { fileURLToPath } from "node:url";
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outputDirectory = path.join(projectRoot, "dist");
 const serverUrl = normalizeServerUrl(process.env.TECHMINO_SERVER_URL);
+const buildId = normalizeBuildId(process.env.CF_PAGES_COMMIT_SHA || randomUUID());
 const stagingDirectory = await mkdtemp(path.join(os.tmpdir(), "techmino-web-"));
 
 const sourceDirectories = ["media", "parts", "Zframework"];
@@ -23,6 +25,12 @@ function normalizeServerUrl(value) {
     throw new Error("TECHMINO_SERVER_URL must contain only the origin");
   }
   return url.origin;
+}
+
+function normalizeBuildId(value) {
+  const build = String(value).replace(/[^A-Za-z0-9._-]/g, "").slice(0, 64);
+  if (!build) throw new Error("Could not create a build ID");
+  return build;
 }
 
 function run(command, argumentsList, options = {}) {
@@ -69,12 +77,16 @@ try {
   await cp(path.join(projectRoot, "cloudflare/websocket-bridge.js"), path.join(outputDirectory, "websocket-bridge.js"));
   await writeFile(
     path.join(outputDirectory, "client-config.js"),
-    `globalThis.TECHMINO_SERVER_URL = ${JSON.stringify(serverUrl)};\n`,
+    [
+      `globalThis.TECHMINO_SERVER_URL = ${JSON.stringify(serverUrl)};`,
+      `globalThis.TECHMINO_BUILD_ID = ${JSON.stringify(buildId)};`,
+      "",
+    ].join("\n"),
     "utf8",
   );
 
-  await run(process.execPath, [path.join(projectRoot, "cloudflare/split-game-data.mjs"), outputDirectory]);
-  await run(process.execPath, [path.join(projectRoot, "cloudflare/patch-web-build.mjs"), outputDirectory]);
+  await run(process.execPath, [path.join(projectRoot, "cloudflare/split-game-data.mjs"), outputDirectory, buildId]);
+  await run(process.execPath, [path.join(projectRoot, "cloudflare/patch-web-build.mjs"), outputDirectory, buildId]);
   await run(process.execPath, [path.join(outputDirectory, "globalizeFS.js")], { cwd: outputDirectory });
   await rm(path.join(outputDirectory, "globalizeFS.js"));
 
@@ -83,7 +95,7 @@ try {
 
   await writeFile(path.join(outputDirectory, "_headers"), [
     "/*",
-    "  Cache-Control: no-cache",
+    "  Cache-Control: no-cache, max-age=0, must-revalidate",
     "  X-Content-Type-Options: nosniff",
     "  Referrer-Policy: no-referrer",
     "",
