@@ -47,5 +47,19 @@ for (const asset of versionedAssets) {
   html = html.replace(assetPattern, `"${versioned(asset)}"`);
 }
 
+const defaultDependencyStatus = "Module.setStatus(left ? 'Preparing... (' + (this.totalDependencies-left) + '/' + this.totalDependencies + ')' : 'All downloads complete.');";
+const downloadAwareStatus = `var packageProgress = this.dataFileDownloads && this.dataFileDownloads['game.data'];
+          if (left && packageProgress && this.finishedDataFileDownloads < this.expectedDataFileDownloads) {
+            Module.setStatus('Downloading data... (' + packageProgress.loaded + '/' + packageProgress.total + ')');
+          } else {
+            ${defaultDependencyStatus}
+          }`;
+if (!html.includes("var packageProgress = this.dataFileDownloads")) {
+  if (!html.includes(defaultDependencyStatus)) {
+    throw new Error("Could not find the Love.js dependency status handler in index.html");
+  }
+  html = html.replace(defaultDependencyStatus, downloadAwareStatus);
+}
+
 html = html.replace('"32, 37, 38, 39, 40"', '"37, 38, 39, 40"');
 await writeFile(indexPath, html, "utf8");

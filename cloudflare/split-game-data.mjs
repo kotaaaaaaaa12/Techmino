@@ -66,13 +66,11 @@ if (dataSize > chunkSize) {
           if (Module['setStatus']) Module['setStatus']('Downloading data... (' + loaded + '/' + packageSize + ')');
         }
 
+        updateProgress();
         for (var index = 0; index < partNames.length; index++) {
           var partUrl = new URL(partNames[index], packageUrl);
           partUrl.searchParams.set('v', packageVersion);
-          var response = await fetch(partUrl.href, {
-            credentials: 'same-origin',
-            cache: 'no-store'
-          });
+          var response = await fetch(partUrl.href, { credentials: 'same-origin' });
           if (!response.ok) throw new Error(response.status + ' : ' + partUrl.href);
 
           if (response.body && typeof response.body.getReader === 'function') {
@@ -96,11 +94,34 @@ if (dataSize > chunkSize) {
 
         if (loaded !== packageSize) throw new Error('Downloaded data size does not match game.data');
         callback(packageBytes.buffer);
-      })().catch(errback);
+      })().catch(function(error) {
+        if (Module['setStatus']) Module['setStatus']('Download failed. Reload the page.');
+        errback(error);
+      });
     };
 `;
 
   script = `${script.slice(0, startIndex)}${replacement}${script.slice(endIndex)}`;
+
+  // The generated loader waits for the entire package to be copied into
+  // IndexedDB before starting the game. Large writes can stall on Safari.
+  // Versioned chunk URLs already provide safe browser caching, so load the
+  // package directly without blocking startup on EM_PRELOAD_CACHE.
+  const databaseStart = script.indexOf("      openDatabase(");
+  const statusStart = script.indexOf(
+    "      if (Module['setStatus']) Module['setStatus']('Downloading...');",
+    databaseStart,
+  );
+  if (databaseStart === -1 || statusStart === -1) {
+    throw new Error("Could not find the Love.js IndexedDB preload block in game.js");
+  }
+  const directLoader = `      Module.preloadResults[PACKAGE_NAME] = {fromCache: false};
+      console.info('loading ' + PACKAGE_NAME + ' from versioned chunks');
+      fetchRemotePackage(REMOTE_PACKAGE_NAME, REMOTE_PACKAGE_SIZE, processPackageData, handleError);
+
+`;
+  script = `${script.slice(0, databaseStart)}${directLoader}${script.slice(statusStart)}`;
+
   await writeFile(scriptPath, script, "utf8");
   await rm(dataPath);
 }

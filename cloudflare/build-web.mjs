@@ -95,9 +95,14 @@ try {
 
   await writeFile(path.join(outputDirectory, "_headers"), [
     "/*",
-    "  Cache-Control: no-cache, max-age=0, must-revalidate",
     "  X-Content-Type-Options: nosniff",
     "  Referrer-Policy: no-referrer",
+    "/",
+    "  Cache-Control: no-cache, max-age=0, must-revalidate",
+    "/index.html",
+    "  Cache-Control: no-cache, max-age=0, must-revalidate",
+    "/game.data.part*",
+    "  Cache-Control: public, max-age=31536000, immutable",
     "",
   ].join("\n"), "utf8");
 } finally {
