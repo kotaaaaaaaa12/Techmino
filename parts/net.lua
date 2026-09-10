@@ -389,6 +389,8 @@ function NET.player_updateConf()
     wsSend(actMap.player_updateConf,dumpBasicConfig())
 end
 function NET.player_finish(msg)
+    if NET.finishReported then return end
+    NET.finishReported=true
     wsSend(actMap.player_finish,msg)
 end
 function NET.player_joinGroup(gid)
@@ -640,6 +642,7 @@ end
 
 local function beginNetMatch(body)
     storeNetMatchSeed(body)
+    NET.finishReported=false
     NET.matchCountdownEnd=false
     -- Keep the start signal pending while a scene transition is finishing.
     -- The net_game scene consumes this lock and starts the match.

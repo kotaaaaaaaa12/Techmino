@@ -260,6 +260,15 @@ function scene.update(dt)
 
                 local P1=PLAYERS[1]
 
+                -- The player object normally reports its own loss. This scene-level
+                -- check guarantees that the server still receives the result if the
+                -- normal callback is skipped by the web runtime.
+                if not NET.spectate and not NET.finishReported and
+                    (P1.result=='lose' or GAME.result=='gameover')
+                then
+                    NET.player_finish({reason='lose'})
+                end
+
                 -- Warning check
                 checkWarning(P1,dt)
 
