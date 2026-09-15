@@ -7,7 +7,7 @@ local scrollX-- Tip scroll position
 local flash=0
 
 local function openAccount()
-    JS.callJS('TechminoAccount.open()')
+    SCN.go('account')
 end
 
 local widgetX0={
@@ -235,7 +235,7 @@ scene.widgetList={
 }
 if SYSTEM=='Web' then
     scene.widgetList[#scene.widgetList+1]=WIDGET.newButton{
-        name='account',x=450,y=80,w=190,h=100,color='lV',font=30,
+        name='account',x=480,y=80,w=160,h=100,color='lV',font=28,
         fText='Account',code=openAccount
     }
 end

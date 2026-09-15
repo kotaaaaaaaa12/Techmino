@@ -210,6 +210,31 @@
     });
   }
 
+  async function updateDisplayName(displayName) {
+    const name = String(displayName || "").trim();
+    if (!name || name.length > 24) {
+      throw new Error("Display name must be between 1 and 24 characters.");
+    }
+    const refreshToken = getStoredValue(refreshTokenKey);
+    if (!refreshToken) throw new Error("Sign in or create a guest session first.");
+
+    const response = await fetch(`${serverUrl}/_worker/auth/profile`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken, displayName: name }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(typeof result.error === "string" ? result.error : `Could not save the display name (${response.status}).`);
+    }
+    if (typeof result.refreshToken === "string" && result.refreshToken) {
+      setStoredValue(refreshTokenKey, result.refreshToken);
+    }
+    storeAccount(result.account);
+    setStoredValue(guestNameKey, name);
+    return name;
+  }
+
   async function createSession(authRequest) {
     const refreshToken = authRequest ? null : getStoredValue(refreshTokenKey);
     let response = await requestSession(authRequest || (refreshToken ? { refreshToken } : { mode: "guest" }));
@@ -471,23 +496,8 @@
     }
   }
 
-  function installAccountButton() {
+  function initializeAccountUI() {
     document.getElementById("techmino-account-button")?.remove();
-    const button = accountButton("Account");
-    button.id = "techmino-account-button";
-    button.setAttribute("aria-label", "Open Techmino account settings");
-    button.title = "Open account settings";
-    style(button, {
-      position: "fixed",
-      top: "calc(12px + env(safe-area-inset-top, 0px))",
-      right: "calc(12px + env(safe-area-inset-right, 0px))",
-      zIndex: "2147483645",
-      minWidth: "96px",
-      background: "rgba(37, 99, 235, 0.96)",
-      boxShadow: "0 8px 24px rgba(0, 0, 0, 0.38)",
-    });
-    button.addEventListener("click", () => showAccountDialog());
-    document.body.append(button);
     if (accountNotice) {
       showAccountDialog(accountNotice, { initialChoice: !hasStoredIdentity() });
     } else if (!hasStoredIdentity()) {
@@ -584,15 +594,28 @@
 
   handleOAuthCallback().finally(() => {
     if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", installAccountButton, { once: true });
+      document.addEventListener("DOMContentLoaded", initializeAccountUI, { once: true });
     } else {
-      installAccountButton();
+      initializeAccountUI();
     }
   });
 
   globalThis.TechminoAccount = {
     open() {
       showAccountDialog();
+    },
+    getDisplayName() {
+      return guestName(storedAccount()?.playerId || "");
+    },
+    getAccountLabel() {
+      const account = storedAccount();
+      if (!account) return "Not signed in";
+      if (account.isAnonymous) return "Guest account";
+      return account.email ? `Signed in as ${account.email}` : "Signed-in account";
+    },
+    async setDisplayName(name) {
+      const savedName = await updateDisplayName(name);
+      return `Saved as ${savedName}`;
     },
   };
   globalThis.TechminoSocket = { connect, send, close };

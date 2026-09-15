@@ -3,7 +3,7 @@ local scene={}
 local tip=GC.newText(getFont(30),"")
 
 local function openAccount()
-    JS.callJS('TechminoAccount.open()')
+    SCN.go('account')
 end
 
 function scene.enter()
@@ -30,7 +30,7 @@ scene.widgetList={
 }
 if SYSTEM=='Web' then
     scene.widgetList[#scene.widgetList+1]=WIDGET.newButton{
-        name='account',x=1080,y=250,w=280,h=70,color='lV',font=32,
+        name='account',x=1080,y=250,w=240,h=70,color='lV',font=30,
         fText='Account',code=openAccount
     }
 end
