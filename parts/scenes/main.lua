@@ -6,6 +6,10 @@ local tip=GC.newText(getFont(30),"")
 local scrollX-- Tip scroll position
 local flash=0
 
+local function openAccount()
+    JS.callJS('TechminoAccount.open()')
+end
+
 local widgetX0={
     -10,-10,-10,-10,
     1290,1290,1290,1290,
@@ -112,6 +116,8 @@ function scene.keyDown(key,isRep)
         if _testButton(11) then
             SCN.go('lang')
         end
+    elseif key=='u' and SYSTEM=='Web' then
+        openAccount()
     elseif key=='x' then
         if _testButton(12) then
             SCN.go('about')
@@ -227,4 +233,10 @@ scene.widgetList={
     WIDGET.newButton{name='about',  x=-110,y=670,w=600,h=70,  color='lB',align='R',edge=20,code=pressKey'x',font=50,fText=CHAR.icon.info},
     WIDGET.newButton{name='manual', x=1390,y=670,w=600,h=70,  color='lR',align='L',edge=20,code=pressKey'm',font=50,fText=CHAR.icon.help},
 }
+if SYSTEM=='Web' then
+    scene.widgetList[#scene.widgetList+1]=WIDGET.newButton{
+        name='account',x=450,y=80,w=190,h=100,color='lV',font=30,
+        fText='Account',code=openAccount
+    }
+end
 return scene

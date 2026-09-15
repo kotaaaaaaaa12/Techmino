@@ -2,6 +2,10 @@ local scene={}
 
 local tip=GC.newText(getFont(30),"")
 
+local function openAccount()
+    JS.callJS('TechminoAccount.open()')
+end
+
 function scene.enter()
     tip:set(text.getTip())
     BG.set()
@@ -24,5 +28,11 @@ scene.widgetList={
     WIDGET.newButton{name='dict',    x=1160,y=400,w=120,font=90,fText=CHAR.icon.zBook,code=goScene'dict'},
     WIDGET.newButton{name='quit',    x=1160,y=560,w=120,font=80,fText=CHAR.key.macEsc,code=function() VOC.play('bye')SCN.swapTo('quit','slowFade') end},
 }
+if SYSTEM=='Web' then
+    scene.widgetList[#scene.widgetList+1]=WIDGET.newButton{
+        name='account',x=1080,y=250,w=280,h=70,color='lV',font=32,
+        fText='Account',code=openAccount
+    }
+end
 
 return scene
