@@ -13,9 +13,8 @@
   const accountOverlayId = "techmino-account-overlay";
   const defaultAccountStrings = Object.freeze({
     title: "Account",
-    choosePlay: "Choose how to play",
-    intro: "Sign in to keep the same account across devices, or continue as a guest.",
-    guestDescription: "You are playing as a guest.",
+    choosePlay: "Sign in to play",
+    intro: "Sign in with email or Google to use multiplayer.",
     signedInAs: "Signed in as %s",
     signInPrompt: "Sign in to keep the same account across devices.",
     close: "Close",
@@ -24,21 +23,26 @@
     signIn: "Sign in",
     createAccount: "Create account",
     continueGoogle: "Continue with Google",
-    refreshGuest: "Refresh guest account",
-    continueGuest: "Continue as guest",
     signOut: "Sign out",
+    signInRequired: "Sign in before using multiplayer.",
+    sessionExpired: "Your session expired. Sign in again.",
     invalidCredentials: "Enter a valid email address and a password with at least 8 characters.",
     signingIn: "Signing in...",
     creatingAccount: "Creating account...",
     checkEmail: "Check your email to confirm the account, then return here and sign in.",
     authFailed: "Authentication failed.",
-    creatingGuest: "Creating guest session...",
-    guestFailed: "Could not create a guest session.",
   });
   let accountNotice = "";
   let accountStrings = { ...defaultAccountStrings };
   let pendingAccountDialog = false;
   let accountFullscreenTarget = null;
+
+  class SignInRequiredError extends Error {
+    constructor(message) {
+      super(message);
+      this.name = "SignInRequiredError";
+    }
+  }
 
   function currentFullscreenElement() {
     return document.fullscreenElement || document.webkitFullscreenElement || null;
@@ -303,11 +307,14 @@
 
   async function createSession(authRequest) {
     const refreshToken = authRequest ? null : getStoredValue(refreshTokenKey);
-    let response = await requestSession(authRequest || (refreshToken ? { refreshToken } : { mode: "guest" }));
+    if (!authRequest && !refreshToken) {
+      throw new SignInRequiredError(accountStrings.signInRequired);
+    }
+    const response = await requestSession(authRequest || { refreshToken });
     if (!response.ok && refreshToken && !authRequest) {
       removeStoredValue(refreshTokenKey);
       removeStoredValue(accountKey);
-      response = await requestSession({ mode: "guest" });
+      throw new SignInRequiredError(accountStrings.sessionExpired);
     }
     if (!response.ok) {
       let reason = `Authentication failed (${response.status})`;
@@ -323,6 +330,11 @@
     if (session.confirmationRequired) return session;
     if (!session.refreshToken || !session.accessToken || !session.playerId) {
       throw new Error("The authentication server returned an incomplete session.");
+    }
+    if (session.account?.isAnonymous) {
+      removeStoredValue(refreshTokenKey);
+      removeStoredValue(accountKey);
+      throw new SignInRequiredError(accountStrings.signInRequired);
     }
     setStoredValue(refreshTokenKey, session.refreshToken);
     storeAccount(session.account);
@@ -361,7 +373,15 @@
   }
 
   function hasStoredIdentity() {
-    return Boolean(storedAccount() || getStoredValue(refreshTokenKey));
+    const account = storedAccount();
+    return Boolean(account && !account.isAnonymous && getStoredValue(refreshTokenKey));
+  }
+
+  function clearAnonymousIdentity() {
+    if (storedAccount()?.isAnonymous) {
+      removeStoredValue(refreshTokenKey);
+      removeStoredValue(accountKey);
+    }
   }
 
   async function showAccountDialog(message = accountNotice, options = {}) {
@@ -439,11 +459,9 @@
     });
     accountText.textContent = initialChoice
       ? labels.intro
-      : account?.isAnonymous
-        ? labels.guestDescription
-        : account?.email
-          ? formatAccountText(labels.signedInAs, account.email)
-          : labels.signInPrompt;
+      : account?.email
+        ? formatAccountText(labels.signedInAs, account.email)
+        : labels.signInPrompt;
 
     const status = style(document.createElement("div"), {
       display: message ? "block" : "none",
@@ -504,9 +522,8 @@
       gap: "10px",
     });
     const googleButton = accountButton(labels.continueGoogle);
-    const guestButton = accountButton(account?.isAnonymous ? labels.refreshGuest : labels.continueGuest);
     const signOutButton = accountButton(labels.signOut);
-    providerActions.append(googleButton, guestButton);
+    providerActions.append(googleButton);
     if (account && !account.isAnonymous) providerActions.append(signOutButton);
 
     function setStatus(text, isError = false) {
@@ -549,19 +566,6 @@
       url.searchParams.set("return_to", returnTo);
       globalThis.location.assign(url.href);
     });
-    guestButton.addEventListener("click", async () => {
-      guestButton.disabled = true;
-      setStatus(labels.creatingGuest);
-      try {
-        removeStoredValue(refreshTokenKey);
-        removeStoredValue(accountKey);
-        await createSession({ mode: "guest" });
-        globalThis.location.reload();
-      } catch (error) {
-        setStatus(error instanceof Error ? error.message : labels.guestFailed, true);
-        guestButton.disabled = false;
-      }
-    });
     signOutButton.addEventListener("click", () => {
       removeStoredValue(refreshTokenKey);
       removeStoredValue(accountKey);
@@ -588,6 +592,7 @@
     } else if (!refreshToken) {
       accountNotice = "Google did not return a usable session.";
     } else {
+      removeStoredValue(accountKey);
       setStoredValue(refreshTokenKey, refreshToken);
       try {
         await createSession();
@@ -599,6 +604,7 @@
   }
 
   function initializeAccountUI() {
+    clearAnonymousIdentity();
     window.onclick = (event) => {
       const target = event?.target;
       if (!(target instanceof Element) || !target.closest(`#${accountOverlayId}`)) {
@@ -678,7 +684,12 @@
         code: 4003,
         reason,
       });
-      showConnectionError(reason);
+      if (error instanceof SignInRequiredError) {
+        accountNotice = reason;
+        showAccountDialog(reason, { initialChoice: true });
+      } else {
+        showConnectionError(reason);
+      }
       state.active = false;
     }
   }
@@ -725,8 +736,7 @@
     },
     getAccountInfo() {
       const account = storedAccount();
-      if (!account) return JSON.stringify({ state: "signed-out" });
-      if (account.isAnonymous) return JSON.stringify({ state: "guest" });
+      if (!account || account.isAnonymous) return JSON.stringify({ state: "signed-out" });
       return JSON.stringify({ state: "signed-in", email: account.email || "" });
     },
     async setDisplayName(name) {
