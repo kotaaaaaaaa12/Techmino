@@ -72,24 +72,14 @@ interface BrowserAuthRequest {
   password?: unknown;
 }
 
-const DEFAULT_CLIENT_ORIGIN = "https://techmino.what-the-fuck.men";
-
-function configuredClientOrigins(workerEnv: WorkerEnv): Set<string> {
-  const origins = new Set<string>([DEFAULT_CLIENT_ORIGIN]);
-  for (const value of workerEnv.CLIENT_ORIGIN.split(",")) {
-    try {
-      origins.add(new URL(value.trim()).origin);
-    } catch {
-      // Ignore malformed optional entries; the deployment default remains available.
-    }
-  }
-  return origins;
-}
-
 function allowedOrigin(request: Request, workerEnv: WorkerEnv): string | null {
   const requestOrigin = request.headers.get("Origin");
   if (!requestOrigin) return null;
-  return configuredClientOrigins(workerEnv).has(requestOrigin) ? requestOrigin : null;
+  try {
+    return requestOrigin === new URL(workerEnv.CLIENT_ORIGIN).origin ? requestOrigin : null;
+  } catch {
+    return null;
+  }
 }
 
 function corsHeaders(origin: string): Headers {
@@ -245,7 +235,7 @@ async function createBrowserSession(
 
 function googleAuthRedirect(request: Request, workerEnv: WorkerEnv): Response {
   const requestUrl = new URL(request.url);
-  const allowedOrigins = configuredClientOrigins(workerEnv);
+  const configuredOrigin = new URL(workerEnv.CLIENT_ORIGIN).origin;
   const returnTo = requestUrl.searchParams.get("return_to");
   if (!returnTo) return new Response("Missing return URL", { status: 400 });
 
@@ -255,12 +245,7 @@ function googleAuthRedirect(request: Request, workerEnv: WorkerEnv): Response {
   } catch {
     return new Response("Invalid return URL", { status: 400 });
   }
-  if (!allowedOrigins.has(callback.origin)) {
-    console.warn({
-      event: "techrater.auth.google.rejected",
-      returnOrigin: callback.origin,
-      allowedOrigins: [...allowedOrigins],
-    });
+  if (callback.origin !== configuredOrigin) {
     return new Response("Invalid return origin", { status: 403 });
   }
   callback.hash = "";
@@ -346,13 +331,7 @@ export default {
 
     const origin = allowedOrigin(request, workerEnv);
     if (!origin) {
-      console.warn({
-        event: "techrater.request.rejected",
-        path: url.pathname,
-        reason: "forbidden_origin",
-        requestOrigin: request.headers.get("Origin"),
-        allowedOrigins: [...configuredClientOrigins(workerEnv)],
-      });
+      console.warn({ event: "techrater.request.rejected", path: url.pathname, reason: "forbidden_origin" });
       return new Response("Forbidden origin", { status: 403 });
     }
 
