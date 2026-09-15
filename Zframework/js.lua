@@ -64,15 +64,15 @@ function _Request:new(isPromise,command,onDataLoaded,onError,timeout,id)
     setmetatable(obj,self)
     obj.command=command
     obj.onError=onError or __defaultErrorFunction
+    obj.id=id
+    obj.filename="__temp"..id
     if not isPromise then
-        retrieveJS(command,self.filename)
+        retrieveJS(command,obj.filename)
     else
         JS.callJS(command)
     end
     obj.onDataLoaded=onDataLoaded
     obj.timeOut=(timeout==nil) and obj.timeOut or timeout
-    obj.id=id
-    obj.filename="__temp"..id
 
 
     function obj:getData()
