@@ -729,6 +729,17 @@ return {
         },
         account={
             title="Account.UI",
+            displayName="displayName",save="save()",manageSignIn="manageSignIn()",
+            loading="Loading account...",loadNameFailed="DisplayName.load() failed.",
+            notSignedIn="authState = signedOut",statusUnavailable="Account status unavailable",guestAccount="authState = guest",signedInAs="signedInAs(%s)",
+            enterName="displayName is required.",saving="Saving...",saved="DisplayName saved.",savedAs="displayName = %s",saveFailed="DisplayName.save() failed.",
+            choosePlay="Choose auth mode",intro="Sign in to sync the account across devices, or continue as a guest.",
+            guestDescription="authState = guest",signInPrompt="Sign in to sync the account across devices.",close="close()",
+            emailAddress="email",passwordHint="password (length >= 8)",signIn="signIn()",createAccount="createAccount()",
+            continueGoogle="continueWithGoogle()",refreshGuest="refreshGuest()",continueGuest="continueAsGuest()",signOut="signOut()",
+            invalidCredentials="Invalid email or password length.",signingIn="Signing in...",creatingAccount="Creating account...",
+            checkEmail="Confirm the account by email, then sign in.",authFailed="Authentication failed.",
+            creatingGuest="Creating guest session...",guestFailed="Guest session creation failed.",
         },
         app_15p={
             color="Color",

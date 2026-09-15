@@ -7,6 +7,10 @@ local function openAccount()
 end
 
 function scene.enter()
+    if SYSTEM=='Web' then
+        JS.callJS(('TechminoAccount.setStrings(%s)'):format(JSON.encode(text.WidgetText.account)))
+        scene.widgetList.account:setObject(text.WidgetText.account.title)
+    end
     tip:set(text.getTip())
     BG.set()
     DiscordRPC.update("In Simple Menu")

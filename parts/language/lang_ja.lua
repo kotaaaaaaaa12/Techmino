@@ -826,6 +826,17 @@ C. ゲームパッド
         },
         account={
             title="アカウント",
+            displayName="表示名",save="保存",manageSignIn="ログイン管理",
+            loading="アカウントを読み込み中...",loadNameFailed="表示名を読み込めませんでした。",
+            notSignedIn="ログインしていません",statusUnavailable="アカウント状態を取得できません",guestAccount="ゲストアカウント",signedInAs="%s でログイン中",
+            enterName="表示名を入力してください。",saving="保存中...",saved="表示名を保存しました。",savedAs="%s として保存しました",saveFailed="表示名を保存できませんでした。",
+            choosePlay="プレイ方法を選択",intro="端末間で同じアカウントを使うにはログインしてください。ゲストでもプレイできます。",
+            guestDescription="ゲストとしてプレイ中です。",signInPrompt="端末間で同じアカウントを使うにはログインしてください。",close="閉じる",
+            emailAddress="メールアドレス",passwordHint="パスワード（8文字以上）",signIn="ログイン",createAccount="アカウント作成",
+            continueGoogle="Googleで続ける",refreshGuest="ゲストアカウントを更新",continueGuest="ゲストとして続ける",signOut="ログアウト",
+            invalidCredentials="有効なメールアドレスと8文字以上のパスワードを入力してください。",signingIn="ログイン中...",creatingAccount="アカウントを作成中...",
+            checkEmail="確認メールを開いてから、ここに戻ってログインしてください。",authFailed="認証に失敗しました。",
+            creatingGuest="ゲストセッションを作成中...",guestFailed="ゲストセッションを作成できませんでした。",
         },
         app_15p={
             color="色",

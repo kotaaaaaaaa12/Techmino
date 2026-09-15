@@ -23,6 +23,10 @@ local enterConsole=coroutine.wrap(function()
     end
 end)
 function scene.enter()
+    if SYSTEM=='Web' then
+        JS.callJS(('TechminoAccount.setStrings(%s)'):format(JSON.encode(text.WidgetText.account)))
+        scene.widgetList.account:setObject(text.WidgetText.account.title)
+    end
     if THEME.cur=='halloween' then
         TASK.new(function()
             TEST.yieldT(.26)
@@ -235,7 +239,7 @@ scene.widgetList={
 }
 if SYSTEM=='Web' then
     scene.widgetList[#scene.widgetList+1]=WIDGET.newButton{
-        name='account',x=480,y=80,w=160,h=100,color='lV',font=28,
+        name='account',x=1160,y=80,w=200,h=100,color='lV',font=28,
         fText='Account',code=openAccount
     }
 end

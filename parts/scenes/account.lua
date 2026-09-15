@@ -1,6 +1,14 @@
 local scene={}
-local accountStatus='Loading account...'
+local accountStatus=''
 local saveStatus=''
+
+local function accountText()
+    return text.WidgetText.account
+end
+
+local function syncAccountStrings()
+    JS.callJS(('TechminoAccount.setStrings(%s)'):format(JSON.encode(accountText())))
+end
 
 local function refreshAccount()
     JS.newRequest(
@@ -9,18 +17,28 @@ local function refreshAccount()
             scene.widgetList.displayName:setText(name or '')
         end,
         function()
-            saveStatus='Could not load the display name.'
+            saveStatus=accountText().loadNameFailed
         end,
         5,
         'techminoAccountName'
     )
     JS.newRequest(
-        'TechminoAccount.getAccountLabel()',
-        function(label)
-            accountStatus=label or 'Not signed in'
+        'TechminoAccount.getAccountInfo()',
+        function(data)
+            local info=JSON.decode(data)
+            local T=accountText()
+            if not info or info.state=='signed-out' then
+                accountStatus=T.notSignedIn
+            elseif info.state=='guest' then
+                accountStatus=T.guestAccount
+            elseif info.state=='signed-in' then
+                accountStatus=T.signedInAs:format(info.email or '')
+            else
+                accountStatus=T.statusUnavailable
+            end
         end,
         function()
-            accountStatus='Account status unavailable'
+            accountStatus=accountText().statusUnavailable
         end,
         5,
         'techminoAccountLabel'
@@ -30,27 +48,28 @@ end
 local function saveDisplayName()
     local name=STRING.trim(scene.widgetList.displayName:getText())
     if #name==0 then
-        MES.new('error','Enter a display name.')
+        MES.new('error',accountText().enterName)
         return
     end
-    saveStatus='Saving...'
+    saveStatus=accountText().saving
     JS.newPromiseRequest(
         JS.stringFunc([[
             TechminoAccount.setDisplayName(%s)
                 .then((message) => _$_(message))
-                .catch((error) => _$_('ERROR:' + (error && error.message ? error.message : 'Could not save the display name.')));
+                .catch(() => _$_('ERROR'));
         ]],JSON.encode(name)),
         function(result)
-            if result:sub(1,6)=='ERROR:' then
-                saveStatus=result:sub(7)
+            local T=accountText()
+            if result=='ERROR' then
+                saveStatus=T.saveFailed
                 MES.new('error',saveStatus)
             else
-                saveStatus=result
-                MES.new('check','Display name saved.')
+                saveStatus=T.savedAs:format(result)
+                MES.new('check',T.saved)
             end
         end,
         function()
-            saveStatus='Could not save the display name.'
+            saveStatus=accountText().saveFailed
             MES.new('error',saveStatus)
         end,
         15,
@@ -59,11 +78,12 @@ local function saveDisplayName()
 end
 
 local function manageSignIn()
-    JS.callJS('TechminoAccount.open()')
+    JS.callJS(('TechminoAccount.open(%s)'):format(JSON.encode(accountText())))
 end
 
 function scene.enter()
-    accountStatus='Loading account...'
+    syncAccountStrings()
+    accountStatus=accountText().loading
     saveStatus=''
     refreshAccount()
 end
@@ -80,21 +100,22 @@ function scene.keyDown(key,isRep)
 end
 
 function scene.draw()
+    local T=accountText()
     setFont(30)
     GC.setColor(COLOR.Z)
-    GC.print('Display name',280,165)
-    GC.print(accountStatus,360,320)
+    GC.print(T.displayName,260,145)
+    GC.print(accountStatus,260,320)
     if saveStatus~='' then
         GC.setColor(COLOR.lN)
-        GC.print(saveStatus,360,365)
+        GC.print(saveStatus,260,365)
     end
 end
 
 scene.widgetList={
-    WIDGET.newText{name='title',x=80,y=50,font=70,align='L',fText='Account'},
-    WIDGET.newInputBox{name='displayName',x=360,y=150,w=520,h=70,font=36,limit=24},
-    WIDGET.newButton{name='save',x=1000,y=185,w=220,h=70,color='lG',font=34,fText='Save',code=saveDisplayName},
-    WIDGET.newButton{name='manage',x=640,y=470,w=420,h=90,color='lV',font=36,fText='Manage sign-in',code=manageSignIn},
+    WIDGET.newText{name='title',x=80,y=50,font=70,align='L'},
+    WIDGET.newInputBox{name='displayName',x=260,y=190,w=650,h=70,font=36,limit=24},
+    WIDGET.newButton{name='save',x=1030,y=225,w=220,h=70,color='lG',font=34,code=saveDisplayName},
+    WIDGET.newButton{name='manageSignIn',x=640,y=480,w=420,h=90,color='lV',font=36,code=manageSignIn},
     WIDGET.newButton{name='back',x=1140,y=640,w=170,h=80,sound='back',font=60,fText=CHAR.icon.back,code=pressKey'escape'},
 }
 

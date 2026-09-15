@@ -781,6 +781,17 @@ return {
         },
         account={
             title="賬戶",
+            displayName="顯示名稱",save="儲存",manageSignIn="管理登入",
+            loading="正在載入賬戶...",loadNameFailed="無法載入顯示名稱。",
+            notSignedIn="未登入",statusUnavailable="無法取得賬戶狀態",guestAccount="訪客賬戶",signedInAs="已以 %s 登入",
+            enterName="請輸入顯示名稱。",saving="正在儲存...",saved="顯示名稱已儲存。",savedAs="已儲存為 %s",saveFailed="無法儲存顯示名稱。",
+            choosePlay="選擇遊玩方式",intro="登入後可在不同裝置上使用同一賬戶，也可以訪客身分繼續。",
+            guestDescription="你正在以訪客身分遊玩。",signInPrompt="登入後可在不同裝置上使用同一賬戶。",close="關閉",
+            emailAddress="電子郵件",passwordHint="密碼（至少8個字元）",signIn="登入",createAccount="建立賬戶",
+            continueGoogle="使用 Google 繼續",refreshGuest="重新整理訪客賬戶",continueGuest="以訪客身分繼續",signOut="登出",
+            invalidCredentials="請輸入有效的電子郵件和至少8個字元的密碼。",signingIn="正在登入...",creatingAccount="正在建立賬戶...",
+            checkEmail="請透過郵件確認賬戶，然後返回此處登入。",authFailed="驗證失敗。",
+            creatingGuest="正在建立訪客工作階段...",guestFailed="無法建立訪客工作階段。",
         },
         app_15p={
             color="顏色",

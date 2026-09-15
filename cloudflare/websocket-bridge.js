@@ -11,7 +11,73 @@
   const memoryStorage = new Map();
   const errorOverlayId = "techmino-multiplayer-error";
   const accountOverlayId = "techmino-account-overlay";
+  const defaultAccountStrings = Object.freeze({
+    title: "Account",
+    choosePlay: "Choose how to play",
+    intro: "Sign in to keep the same account across devices, or continue as a guest.",
+    guestDescription: "You are playing as a guest.",
+    signedInAs: "Signed in as %s",
+    signInPrompt: "Sign in to keep the same account across devices.",
+    close: "Close",
+    emailAddress: "Email address",
+    passwordHint: "Password (8 characters minimum)",
+    signIn: "Sign in",
+    createAccount: "Create account",
+    continueGoogle: "Continue with Google",
+    refreshGuest: "Refresh guest account",
+    continueGuest: "Continue as guest",
+    signOut: "Sign out",
+    invalidCredentials: "Enter a valid email address and a password with at least 8 characters.",
+    signingIn: "Signing in...",
+    creatingAccount: "Creating account...",
+    checkEmail: "Check your email to confirm the account, then return here and sign in.",
+    authFailed: "Authentication failed.",
+    creatingGuest: "Creating guest session...",
+    guestFailed: "Could not create a guest session.",
+  });
   let accountNotice = "";
+  let accountStrings = { ...defaultAccountStrings };
+  let pendingAccountDialog = false;
+  let accountFullscreenTarget = null;
+
+  function currentFullscreenElement() {
+    return document.fullscreenElement || document.webkitFullscreenElement || null;
+  }
+
+  async function leaveFullscreenForAccount() {
+    const activeElement = currentFullscreenElement();
+    if (!activeElement) return;
+    accountFullscreenTarget = activeElement;
+    try {
+      if (document.exitFullscreen) {
+        await document.exitFullscreen();
+      } else if (document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+      }
+    } catch (error) {
+      console.warn("Could not exit fullscreen before opening account settings.", error);
+    }
+  }
+
+  function restoreAccountFullscreen() {
+    const target = accountFullscreenTarget;
+    accountFullscreenTarget = null;
+    if (!target || !target.isConnected || currentFullscreenElement()) return;
+    try {
+      const request = target.requestFullscreen
+        ? target.requestFullscreen()
+        : target.webkitRequestFullscreen
+          ? target.webkitRequestFullscreen()
+          : target.webkitRequestFullScreen
+            ? target.webkitRequestFullScreen()
+            : null;
+      if (request && typeof request.catch === "function") {
+        request.catch((error) => console.warn("Could not restore fullscreen.", error));
+      }
+    } catch (error) {
+      console.warn("Could not restore fullscreen.", error);
+    }
+  }
 
   function removeConnectionError() {
     document.getElementById(errorOverlayId)?.remove();
@@ -284,14 +350,26 @@
     });
   }
 
+  function setAccountStrings(strings) {
+    if (strings && typeof strings === "object") {
+      accountStrings = { ...defaultAccountStrings, ...strings };
+    }
+  }
+
+  function formatAccountText(template, value) {
+    return String(template || "").replace("%s", String(value || ""));
+  }
+
   function hasStoredIdentity() {
     return Boolean(storedAccount() || getStoredValue(refreshTokenKey));
   }
 
-  function showAccountDialog(message = accountNotice, options = {}) {
+  async function showAccountDialog(message = accountNotice, options = {}) {
     document.getElementById(accountOverlayId)?.remove();
+    await leaveFullscreenForAccount();
     accountNotice = "";
     const initialChoice = options.initialChoice === true;
+    const labels = accountStrings;
 
     const overlay = style(document.createElement("div"), {
       position: "fixed",
@@ -326,11 +404,14 @@
       marginBottom: "8px",
     });
     const title = style(document.createElement("h2"), { margin: "0", fontSize: "24px" });
-    title.textContent = initialChoice ? "Choose how to play" : "Techmino Account";
+    title.textContent = initialChoice ? labels.choosePlay : labels.title;
     header.append(title);
     if (!initialChoice) {
-      const closeButton = accountButton("Close");
-      closeButton.addEventListener("click", () => overlay.remove());
+      const closeButton = accountButton(labels.close);
+      closeButton.addEventListener("click", () => {
+        overlay.remove();
+        restoreAccountFullscreen();
+      });
       header.append(closeButton);
     }
 
@@ -341,12 +422,12 @@
       lineHeight: "1.5",
     });
     accountText.textContent = initialChoice
-      ? "Sign in to keep the same account across devices, or continue as a guest."
+      ? labels.intro
       : account?.isAnonymous
-        ? "You are playing as a guest."
+        ? labels.guestDescription
         : account?.email
-          ? `Signed in as ${account.email}`
-          : "Sign in to keep the same account across devices.";
+          ? formatAccountText(labels.signedInAs, account.email)
+          : labels.signInPrompt;
 
     const status = style(document.createElement("div"), {
       display: message ? "block" : "none",
@@ -374,14 +455,14 @@
     const email = style(document.createElement("input"), inputStyle);
     email.type = "email";
     email.autocomplete = "email";
-    email.placeholder = "Email address";
-    email.setAttribute("aria-label", "Email address");
+    email.placeholder = labels.emailAddress;
+    email.setAttribute("aria-label", labels.emailAddress);
 
     const password = style(document.createElement("input"), { ...inputStyle, marginTop: "10px" });
     password.type = "password";
     password.autocomplete = "current-password";
-    password.placeholder = "Password (8 characters minimum)";
-    password.setAttribute("aria-label", "Password");
+    password.placeholder = labels.passwordHint;
+    password.setAttribute("aria-label", labels.passwordHint);
 
     const emailActions = style(document.createElement("div"), {
       display: "grid",
@@ -389,8 +470,8 @@
       gap: "10px",
       marginTop: "12px",
     });
-    const signInButton = accountButton("Sign in", true);
-    const signUpButton = accountButton("Create account");
+    const signInButton = accountButton(labels.signIn, true);
+    const signUpButton = accountButton(labels.createAccount);
     emailActions.append(signInButton, signUpButton);
 
     const divider = style(document.createElement("div"), {
@@ -401,9 +482,9 @@
       display: "grid",
       gap: "10px",
     });
-    const googleButton = accountButton("Continue with Google");
-    const guestButton = accountButton(account?.isAnonymous ? "Refresh guest account" : "Continue as guest");
-    const signOutButton = accountButton("Sign out");
+    const googleButton = accountButton(labels.continueGoogle);
+    const guestButton = accountButton(account?.isAnonymous ? labels.refreshGuest : labels.continueGuest);
+    const signOutButton = accountButton(labels.signOut);
     providerActions.append(googleButton, guestButton);
     if (account && !account.isAnonymous) providerActions.append(signOutButton);
 
@@ -417,22 +498,22 @@
       const emailValue = email.value.trim();
       const passwordValue = password.value;
       if (!emailValue || passwordValue.length < 8) {
-        setStatus("Enter a valid email address and a password with at least 8 characters.", true);
+        setStatus(labels.invalidCredentials, true);
         return;
       }
       signInButton.disabled = true;
       signUpButton.disabled = true;
-      setStatus(mode === "email-sign-in" ? "Signing in..." : "Creating account...");
+      setStatus(mode === "email-sign-in" ? labels.signingIn : labels.creatingAccount);
       try {
         const session = await createSession({ mode, email: emailValue, password: passwordValue });
         if (session.confirmationRequired) {
           password.value = "";
-          setStatus("Check your email to confirm the account, then return here and sign in.");
+          setStatus(labels.checkEmail);
           return;
         }
         globalThis.location.reload();
       } catch (error) {
-        setStatus(error instanceof Error ? error.message : "Authentication failed.", true);
+        setStatus(error instanceof Error ? error.message : labels.authFailed, true);
       } finally {
         signInButton.disabled = false;
         signUpButton.disabled = false;
@@ -449,14 +530,14 @@
     });
     guestButton.addEventListener("click", async () => {
       guestButton.disabled = true;
-      setStatus("Creating guest session...");
+      setStatus(labels.creatingGuest);
       try {
         removeStoredValue(refreshTokenKey);
         removeStoredValue(accountKey);
         await createSession({ mode: "guest" });
         globalThis.location.reload();
       } catch (error) {
-        setStatus(error instanceof Error ? error.message : "Could not create a guest session.", true);
+        setStatus(error instanceof Error ? error.message : labels.guestFailed, true);
         guestButton.disabled = false;
       }
     });
@@ -499,9 +580,9 @@
   function initializeAccountUI() {
     document.getElementById("techmino-account-button")?.remove();
     if (accountNotice) {
-      showAccountDialog(accountNotice, { initialChoice: !hasStoredIdentity() });
+      pendingAccountDialog = true;
     } else if (!hasStoredIdentity()) {
-      showAccountDialog("", { initialChoice: true });
+      pendingAccountDialog = true;
     }
   }
 
@@ -601,21 +682,29 @@
   });
 
   globalThis.TechminoAccount = {
-    open() {
+    setStrings(strings) {
+      setAccountStrings(strings);
+      if (pendingAccountDialog) {
+        pendingAccountDialog = false;
+        showAccountDialog(accountNotice, { initialChoice: !hasStoredIdentity() });
+      }
+    },
+    open(strings) {
+      setAccountStrings(strings);
       showAccountDialog();
     },
     getDisplayName() {
       return guestName(storedAccount()?.playerId || "");
     },
-    getAccountLabel() {
+    getAccountInfo() {
       const account = storedAccount();
-      if (!account) return "Not signed in";
-      if (account.isAnonymous) return "Guest account";
-      return account.email ? `Signed in as ${account.email}` : "Signed-in account";
+      if (!account) return JSON.stringify({ state: "signed-out" });
+      if (account.isAnonymous) return JSON.stringify({ state: "guest" });
+      return JSON.stringify({ state: "signed-in", email: account.email || "" });
     },
     async setDisplayName(name) {
       const savedName = await updateDisplayName(name);
-      return `Saved as ${savedName}`;
+      return savedName;
     },
   };
   globalThis.TechminoSocket = { connect, send, close };
