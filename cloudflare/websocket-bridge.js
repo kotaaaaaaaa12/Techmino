@@ -381,8 +381,24 @@
       padding: "20px",
       background: "rgba(0, 0, 0, 0.72)",
       fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+      pointerEvents: "auto",
+      touchAction: "manipulation",
     });
     overlay.id = accountOverlayId;
+
+    // Keep Love.js input handlers from consuming form input on mobile browsers.
+    for (const eventName of [
+      "keydown",
+      "keyup",
+      "keypress",
+      "beforeinput",
+      "input",
+      "compositionstart",
+      "compositionupdate",
+      "compositionend",
+    ]) {
+      overlay.addEventListener(eventName, (event) => event.stopPropagation());
+    }
 
     const panel = style(document.createElement("div"), {
       width: "min(460px, 100%)",
@@ -451,6 +467,11 @@
       color: "#ffffff",
       font: "16px system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
       boxSizing: "border-box",
+      pointerEvents: "auto",
+      touchAction: "auto",
+      userSelect: "text",
+      WebkitUserSelect: "text",
+      WebkitAppearance: "none",
     };
     const email = style(document.createElement("input"), inputStyle);
     email.type = "email";
@@ -578,6 +599,12 @@
   }
 
   function initializeAccountUI() {
+    window.onclick = (event) => {
+      const target = event?.target;
+      if (!(target instanceof Element) || !target.closest(`#${accountOverlayId}`)) {
+        window.focus();
+      }
+    };
     document.getElementById("techmino-account-button")?.remove();
     if (accountNotice) {
       pendingAccountDialog = true;

@@ -61,5 +61,19 @@ if (!html.includes("var packageProgress = this.dataFileDownloads")) {
   html = html.replace(defaultDependencyStatus, downloadAwareStatus);
 }
 
+const unconditionalWindowFocus = "window.onclick = function () { window.focus(); };";
+const gameOnlyWindowFocus = `window.addEventListener("click", function (event) {
+        var target = event.target;
+        if (!(target instanceof Element) || !target.closest("#techmino-account-overlay")) {
+          window.focus();
+        }
+      });`;
+if (!html.includes(gameOnlyWindowFocus)) {
+  if (!html.includes(unconditionalWindowFocus)) {
+    throw new Error("Could not find the Love.js window focus handler in index.html");
+  }
+  html = html.replace(unconditionalWindowFocus, gameOnlyWindowFocus);
+}
+
 html = html.replace('"32, 37, 38, 39, 40"', '"37, 38, 39, 40"');
 await writeFile(indexPath, html, "utf8");
