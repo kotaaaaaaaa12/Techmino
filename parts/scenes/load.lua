@@ -183,6 +183,9 @@ local loadingThread=coroutine.wrap(function()
     THEME.set(THEME.calculate())
     LOADED=true
     saveStats()
+    if SYSTEM=='Web' then
+        JS.callJS(('TechminoCloudSave.initialize(%s)'):format(JSON.encode(love.filesystem.getSaveDirectory())))
+    end
     Z.setPowerInfo(SETTING.powerInfo)
     return 'finish'
 end)

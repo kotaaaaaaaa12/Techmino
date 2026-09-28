@@ -8,6 +8,18 @@
   const guestNameKey = "techmino.guestName";
   const refreshTokenKey = "techmino.supabaseRefreshToken";
   const accountKey = "techmino.account";
+  const cloudSaveMetaPrefix = "techmino.cloudSaveMeta";
+  const cloudSaveFixedFiles = Object.freeze([
+    "conf/data",
+    "conf/unlock",
+    "conf/settings",
+    "conf/key",
+    "conf/virtualkey",
+    "conf/vkSave1",
+    "conf/vkSave2",
+  ]);
+  const cloudSaveRecordPattern = /^record\/[A-Za-z0-9_-]+\.rec$/;
+  const cloudSaveMaxBytes = 1_500_000;
   const memoryStorage = new Map();
   const errorOverlayId = "techmino-multiplayer-error";
   const accountOverlayId = "techmino-account-overlay";
@@ -36,6 +48,11 @@
   let accountStrings = { ...defaultAccountStrings };
   let pendingAccountDialog = false;
   let accountFullscreenTarget = null;
+  let cloudSaveDirectory = null;
+  let cloudSaveInitialized = false;
+  let cloudSaveTimer = null;
+  let cloudSavePromise = null;
+  let cloudSaveStatus = { state: "idle" };
 
   class SignInRequiredError extends Error {
     constructor(message) {
@@ -224,9 +241,10 @@
 
   function storeAccount(account) {
     if (account && typeof account === "object") {
-      setStoredValue(accountKey, JSON.stringify(account));
-      if (typeof account.displayName === "string" && account.displayName) {
-        setStoredValue(guestNameKey, account.displayName.slice(0, 24));
+      const mergedAccount = { ...(storedAccount() || {}), ...account };
+      setStoredValue(accountKey, JSON.stringify(mergedAccount));
+      if (typeof mergedAccount.displayName === "string" && mergedAccount.displayName) {
+        setStoredValue(guestNameKey, mergedAccount.displayName.slice(0, 24));
       }
     }
   }
@@ -337,7 +355,7 @@
       throw new SignInRequiredError(accountStrings.signInRequired);
     }
     setStoredValue(refreshTokenKey, session.refreshToken);
-    storeAccount(session.account);
+    storeAccount({ ...session.account, playerId: session.playerId });
     return session;
   }
 
@@ -382,6 +400,310 @@
       removeStoredValue(refreshTokenKey);
       removeStoredValue(accountKey);
     }
+  }
+
+  function cloudSaveAccountId() {
+    const account = storedAccount();
+    return account?.playerId || account?.email || null;
+  }
+
+  function cloudSaveMetaKey() {
+    const accountId = cloudSaveAccountId();
+    return accountId ? `${cloudSaveMetaPrefix}.${accountId}` : null;
+  }
+
+  function readCloudSaveMeta() {
+    const key = cloudSaveMetaKey();
+    if (!key) return { revision: 0, dirty: false, conflict: false, lastSynced: null };
+    try {
+      const value = getStoredValue(key);
+      const meta = value ? JSON.parse(value) : {};
+      return {
+        revision: Number.isSafeInteger(meta.revision) && meta.revision >= 0 ? meta.revision : 0,
+        dirty: meta.dirty === true,
+        conflict: meta.conflict === true,
+        lastSynced: typeof meta.lastSynced === "string" ? meta.lastSynced : null,
+      };
+    } catch {
+      return { revision: 0, dirty: false, conflict: false, lastSynced: null };
+    }
+  }
+
+  function writeCloudSaveMeta(meta) {
+    const key = cloudSaveMetaKey();
+    if (key) setStoredValue(key, JSON.stringify(meta));
+  }
+
+  function setCloudSaveStatus(state, details = {}) {
+    cloudSaveStatus = { state, ...details };
+    return cloudSaveStatus;
+  }
+
+  function isCloudSavePath(path) {
+    return cloudSaveFixedFiles.includes(path) || cloudSaveRecordPattern.test(path);
+  }
+
+  function fileExists(path) {
+    try {
+      return FS.isFile(FS.stat(path).mode);
+    } catch {
+      return false;
+    }
+  }
+
+  function readSaveFile(path) {
+    try {
+      return FS.readFile(path, { encoding: "utf8" });
+    } catch {
+      return null;
+    }
+  }
+
+  function collectCloudSave() {
+    if (!cloudSaveDirectory) throw new Error("The game save directory is not ready.");
+    const files = {};
+    for (const path of cloudSaveFixedFiles) {
+      const content = readSaveFile(`${cloudSaveDirectory}/${path}`);
+      if (typeof content === "string") files[path] = content;
+    }
+
+    const recordDirectory = `${cloudSaveDirectory}/record`;
+    try {
+      for (const name of FS.readdir(recordDirectory)) {
+        const path = `record/${name}`;
+        if (!cloudSaveRecordPattern.test(path)) continue;
+        const content = readSaveFile(`${cloudSaveDirectory}/${path}`);
+        if (typeof content === "string") files[path] = content;
+      }
+    } catch {
+      // A new profile may not have a record directory yet.
+    }
+
+    const payload = { schemaVersion: 1, files };
+    if (new TextEncoder().encode(JSON.stringify(payload)).byteLength > cloudSaveMaxBytes) {
+      throw new Error("Cloud save exceeds the 1.5 MB limit.");
+    }
+    return payload;
+  }
+
+  function validateRemoteCloudSave(payload) {
+    if (!payload || payload.schemaVersion !== 1 || !payload.files || typeof payload.files !== "object") {
+      throw new Error("The cloud save has an unsupported format.");
+    }
+    const files = {};
+    for (const [path, content] of Object.entries(payload.files)) {
+      if (!isCloudSavePath(path) || typeof content !== "string") {
+        throw new Error("The cloud save contains invalid data.");
+      }
+      files[path] = content;
+    }
+    return { schemaVersion: 1, files };
+  }
+
+  async function cloudSaveRequest(path, body) {
+    const refreshToken = getStoredValue(refreshTokenKey);
+    if (!refreshToken) throw new SignInRequiredError(accountStrings.signInRequired);
+    const response = await fetch(`${serverUrl}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...body, refreshToken }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (typeof result.refreshToken === "string" && result.refreshToken) {
+      setStoredValue(refreshTokenKey, result.refreshToken);
+    }
+    if (!response.ok) {
+      const error = new Error(typeof result.error === "string" ? result.error : `Cloud save request failed (${response.status}).`);
+      error.cloudConflict = result.conflict === true || response.status === 409;
+      throw error;
+    }
+    return result;
+  }
+
+  async function loadCloudSave() {
+    const result = await cloudSaveRequest("/_worker/save/load", {});
+    if (!result.save) return null;
+    return {
+      revision: result.save.revision,
+      payload: validateRemoteCloudSave(result.save.payload),
+      updatedAt: result.save.updatedAt,
+    };
+  }
+
+  async function storeCloudSave(payload, expectedRevision) {
+    const result = await cloudSaveRequest("/_worker/save/store", { payload, expectedRevision });
+    if (!result.save || !Number.isSafeInteger(result.save.revision)) {
+      throw new Error("The cloud save server returned an incomplete response.");
+    }
+    return result.save;
+  }
+
+  function flushSaveFileSystem() {
+    return new Promise((resolve, reject) => {
+      if (!globalThis.FS || typeof FS.syncfs !== "function") {
+        resolve();
+        return;
+      }
+      FS.syncfs(false, (error) => error ? reject(error) : resolve());
+    });
+  }
+
+  async function applyCloudSave(remote) {
+    if (!cloudSaveDirectory) throw new Error("The game save directory is not ready.");
+    const payload = validateRemoteCloudSave(remote.payload);
+    const currentPaths = [...cloudSaveFixedFiles];
+    try {
+      for (const name of FS.readdir(`${cloudSaveDirectory}/record`)) {
+        const path = `record/${name}`;
+        if (cloudSaveRecordPattern.test(path)) currentPaths.push(path);
+      }
+    } catch {
+      // The directory is created below when the cloud save contains records.
+    }
+    for (const path of currentPaths) {
+      const fullPath = `${cloudSaveDirectory}/${path}`;
+      if (fileExists(fullPath)) FS.unlink(fullPath);
+    }
+    FS.mkdirTree(`${cloudSaveDirectory}/conf`);
+    FS.mkdirTree(`${cloudSaveDirectory}/record`);
+    for (const [path, content] of Object.entries(payload.files)) {
+      FS.writeFile(`${cloudSaveDirectory}/${path}`, content);
+    }
+    await flushSaveFileSystem();
+    const meta = {
+      revision: remote.revision,
+      dirty: false,
+      conflict: false,
+      lastSynced: remote.updatedAt || new Date().toISOString(),
+    };
+    writeCloudSaveMeta(meta);
+    setCloudSaveStatus("restored", { lastSynced: meta.lastSynced });
+    globalThis.setTimeout(() => globalThis.location.reload(), 250);
+    return cloudSaveStatus;
+  }
+
+  async function uploadCloudSave(expectedRevision) {
+    const saved = await storeCloudSave(collectCloudSave(), expectedRevision);
+    const meta = {
+      revision: saved.revision,
+      dirty: false,
+      conflict: false,
+      lastSynced: saved.updatedAt || new Date().toISOString(),
+    };
+    writeCloudSaveMeta(meta);
+    return setCloudSaveStatus("synced", { lastSynced: meta.lastSynced, revision: meta.revision });
+  }
+
+  async function performCloudSaveSync(mode) {
+    if (!hasStoredIdentity()) return setCloudSaveStatus("signed-out");
+    if (!cloudSaveDirectory) throw new Error("The game save directory is not ready.");
+    setCloudSaveStatus("syncing");
+    const remote = await loadCloudSave();
+    const meta = readCloudSaveMeta();
+
+    if (mode === "download") {
+      if (!remote) throw new Error("No cloud save exists for this account.");
+      return applyCloudSave(remote);
+    }
+    if (mode === "upload") {
+      return uploadCloudSave(remote?.revision || 0);
+    }
+    if (!remote) return uploadCloudSave(0);
+
+    if (meta.revision === 0) {
+      meta.conflict = true;
+      writeCloudSaveMeta(meta);
+      return setCloudSaveStatus("conflict", { cloudUpdatedAt: remote.updatedAt });
+    }
+    if (meta.revision !== remote.revision) {
+      if (!meta.dirty && meta.revision < remote.revision) return applyCloudSave(remote);
+      meta.conflict = true;
+      writeCloudSaveMeta(meta);
+      return setCloudSaveStatus("conflict", { cloudUpdatedAt: remote.updatedAt });
+    }
+    if (meta.dirty) return uploadCloudSave(meta.revision);
+    meta.conflict = false;
+    meta.lastSynced = remote.updatedAt || meta.lastSynced;
+    writeCloudSaveMeta(meta);
+    return setCloudSaveStatus("synced", { lastSynced: meta.lastSynced, revision: meta.revision });
+  }
+
+  function syncCloudSave(mode = "smart") {
+    if (!new Set(["smart", "upload", "download"]).has(mode)) {
+      return Promise.reject(new Error("Unknown cloud save mode."));
+    }
+    if (cloudSavePromise) return cloudSavePromise;
+    cloudSavePromise = performCloudSaveSync(mode)
+      .catch((error) => {
+        if (error?.cloudConflict) {
+          const meta = readCloudSaveMeta();
+          meta.conflict = true;
+          writeCloudSaveMeta(meta);
+          return setCloudSaveStatus("conflict");
+        }
+        setCloudSaveStatus("error", { message: error instanceof Error ? error.message : String(error) });
+        throw error;
+      })
+      .finally(() => {
+        cloudSavePromise = null;
+      });
+    return cloudSavePromise;
+  }
+
+  function scheduleCloudSave() {
+    if (!hasStoredIdentity() || readCloudSaveMeta().conflict) return;
+    if (cloudSaveTimer) globalThis.clearTimeout(cloudSaveTimer);
+    cloudSaveTimer = globalThis.setTimeout(() => {
+      cloudSaveTimer = null;
+      syncCloudSave("smart").catch((error) => console.error("Could not sync Techmino cloud save", error));
+    }, 5000);
+  }
+
+  function initializeCloudSave(saveDirectory) {
+    cloudSaveDirectory = String(saveDirectory || "").replace(/\/$/, "");
+    if (!cloudSaveDirectory) return;
+    cloudSaveInitialized = true;
+    if (!hasStoredIdentity()) {
+      setCloudSaveStatus("signed-out");
+      return;
+    }
+    const meta = readCloudSaveMeta();
+    setCloudSaveStatus(meta.conflict ? "conflict" : meta.lastSynced ? "synced" : "idle", {
+      lastSynced: meta.lastSynced,
+      revision: meta.revision,
+    });
+    globalThis.setTimeout(() => {
+      syncCloudSave("smart").catch((error) => console.error("Could not initialize Techmino cloud save", error));
+    }, 1500);
+  }
+
+  function cloudSaveFileChanged(saveDirectory, path) {
+    if (!cloudSaveInitialized || !isCloudSavePath(String(path || ""))) return;
+    if (cloudSaveDirectory !== String(saveDirectory || "").replace(/\/$/, "")) return;
+    const meta = readCloudSaveMeta();
+    meta.dirty = true;
+    writeCloudSaveMeta(meta);
+    setCloudSaveStatus(meta.conflict ? "conflict" : "pending", {
+      lastSynced: meta.lastSynced,
+      revision: meta.revision,
+    });
+    scheduleCloudSave();
+  }
+
+  function getCloudSaveStatus() {
+    if (!hasStoredIdentity()) return JSON.stringify({ state: "signed-out" });
+    const meta = readCloudSaveMeta();
+    const status = cloudSaveStatus.state === "idle"
+      ? { state: meta.conflict ? "conflict" : meta.lastSynced ? "synced" : "idle" }
+      : cloudSaveStatus;
+    return JSON.stringify({
+      ...status,
+      lastSynced: status.lastSynced || meta.lastSynced,
+      lastSyncedText: (status.lastSynced || meta.lastSynced)
+        ? new Date(status.lastSynced || meta.lastSynced).toLocaleString()
+        : null,
+      revision: status.revision || meta.revision,
+    });
   }
 
   async function showAccountDialog(message = accountNotice, options = {}) {
@@ -743,6 +1065,12 @@
       const savedName = await updateDisplayName(name);
       return savedName;
     },
+  };
+  globalThis.TechminoCloudSave = {
+    initialize: initializeCloudSave,
+    fileSaved: cloudSaveFileChanged,
+    getStatus: getCloudSaveStatus,
+    sync: syncCloudSave,
   };
   globalThis.TechminoSocket = { connect, send, close };
 })();

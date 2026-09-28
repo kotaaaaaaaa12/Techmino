@@ -1,6 +1,9 @@
 local scene={}
 local accountStatus=''
 local saveStatus=''
+local cloudStatus=''
+local cloudState='idle'
+local cloudRefreshTimer=0
 
 local function accountText()
     return text.WidgetText.account
@@ -45,6 +48,80 @@ local function refreshAccount()
     )
 end
 
+local function applyCloudStatus(data)
+    local info=type(data)=='table' and data or JSON.decode(data or '')
+    local T=accountText()
+    if not info then
+        cloudState='error'
+        cloudStatus=T.cloudError
+        return
+    end
+    cloudState=info.state or 'idle'
+    if cloudState=='signed-out' then
+        cloudStatus=T.cloudNotSignedIn
+    elseif cloudState=='syncing' then
+        cloudStatus=T.cloudSyncing
+    elseif cloudState=='pending' then
+        cloudStatus=T.cloudPending
+    elseif cloudState=='conflict' then
+        cloudStatus=T.cloudConflict
+    elseif cloudState=='synced' then
+        cloudStatus=T.cloudSynced:format(info.lastSyncedText or T.cloudUnknownTime)
+    elseif cloudState=='restored' then
+        cloudStatus=T.cloudRestored
+    elseif cloudState=='error' then
+        cloudStatus=(info.message and T.cloudErrorDetail:format(info.message)) or T.cloudError
+    else
+        cloudStatus=T.cloudIdle
+    end
+end
+
+local function refreshCloudStatus()
+    JS.newRequest(
+        'TechminoCloudSave.getStatus()',
+        applyCloudStatus,
+        function()
+            cloudState='error'
+            cloudStatus=accountText().cloudError
+        end,
+        5,
+        'techminoCloudSaveStatus'
+    )
+end
+
+local function syncCloudSave(mode)
+    cloudState='syncing'
+    cloudStatus=accountText().cloudSyncing
+    JS.newPromiseRequest(
+        JS.stringFunc([[
+            TechminoCloudSave.sync(%s)
+                .then((result) => _$_(JSON.stringify(result)))
+                .catch((error) => _$_('ERROR:' + (error && error.message ? error.message : 'Cloud save failed.')));
+        ]],JSON.encode(mode)),
+        function(result)
+            if result:sub(1,6)=='ERROR:' then
+                cloudState='error'
+                cloudStatus=accountText().cloudErrorDetail:format(result:sub(7))
+                MES.new('error',cloudStatus)
+            else
+                applyCloudStatus(result)
+                if cloudState=='synced' then
+                    MES.new('check',accountText().cloudSaved)
+                elseif cloudState=='conflict' then
+                    MES.new('warn',accountText().cloudConflict)
+                end
+            end
+        end,
+        function()
+            cloudState='error'
+            cloudStatus=accountText().cloudError
+            MES.new('error',cloudStatus)
+        end,
+        30,
+        'techminoCloudSaveSync'
+    )
+end
+
 local function saveDisplayName()
     local name=STRING.trim(scene.widgetList.displayName:getText())
     if #name==0 then
@@ -85,7 +162,21 @@ function scene.enter()
     syncAccountStrings()
     accountStatus=accountText().loading
     saveStatus=''
+    cloudStatus=accountText().cloudChecking
+    cloudState='syncing'
+    cloudRefreshTimer=0
     refreshAccount()
+    refreshCloudStatus()
+end
+
+function scene.update(dt)
+    if cloudState=='syncing' or cloudState=='pending' then
+        cloudRefreshTimer=cloudRefreshTimer+dt
+        if cloudRefreshTimer>=1.5 then
+            cloudRefreshTimer=0
+            refreshCloudStatus()
+        end
+    end
 end
 
 function scene.keyDown(key,isRep)
@@ -107,15 +198,29 @@ function scene.draw()
     GC.print(accountStatus,260,320)
     if saveStatus~='' then
         GC.setColor(COLOR.lN)
-        GC.print(saveStatus,260,365)
+        GC.print(saveStatus,260,350)
     end
+    GC.setColor(COLOR.Z)
+    GC.print(T.cloudSave,260,395)
+    setFont(24)
+    GC.setColor(cloudState=='error' and COLOR.lR or cloudState=='conflict' and COLOR.lY or COLOR.lN)
+    GC.printf(cloudStatus,260,435,760)
 end
 
 scene.widgetList={
     WIDGET.newText{name='title',x=80,y=50,font=70,align='L'},
     WIDGET.newInputBox{name='displayName',x=260,y=190,w=650,h=70,font=36,limit=24},
     WIDGET.newButton{name='save',x=1030,y=225,w=220,h=70,color='lG',font=34,code=saveDisplayName},
-    WIDGET.newButton{name='manageSignIn',x=640,y=480,w=420,h=90,color='lV',font=36,code=manageSignIn},
+    WIDGET.newButton{name='manageSignIn',x=320,y=515,w=300,h=80,color='lV',font=30,code=manageSignIn},
+    WIDGET.newButton{name='syncNow',x=700,y=515,w=300,h=80,color='lB',font=30,
+        code=function() syncCloudSave('smart') end,
+        hideF=function() return cloudState=='signed-out' or cloudState=='syncing' or cloudState=='conflict' end},
+    WIDGET.newButton{name='useThisDevice',x=320,y=610,w=300,h=70,color='lG',font=25,
+        code=function() syncCloudSave('upload') end,
+        hideF=function() return cloudState~='conflict' end},
+    WIDGET.newButton{name='useCloudSave',x=700,y=610,w=300,h=70,color='lY',font=25,
+        code=function() syncCloudSave('download') end,
+        hideF=function() return cloudState~='conflict' end},
     WIDGET.newButton{name='back',x=1140,y=640,w=170,h=80,sound='back',font=60,fText=CHAR.icon.back,code=pressKey'escape'},
 }
 

@@ -832,6 +832,10 @@ C. Gamepad
             checkEmail="Check your email to confirm the account, then return here and sign in.",authFailed="Authentication failed.",
             creatingGuest="Creating guest session...",guestFailed="Could not create a guest session.",
             signInRequired="Sign in before using multiplayer.",sessionExpired="Your session expired. Sign in again.",
+            cloudSave="Cloud save",syncNow="Sync now",useThisDevice="Use this device",useCloudSave="Use cloud save",
+            cloudChecking="Checking cloud save...",cloudNotSignedIn="Sign in to use cloud saves.",cloudSyncing="Syncing cloud save...",cloudPending="Waiting to sync...",
+            cloudConflict="This device and the cloud have different saves. Choose which one to keep.",cloudSynced="Last synced: %s",cloudUnknownTime="Unknown time",cloudRestored="Cloud save restored. Reloading...",cloudIdle="Cloud save has not been created yet.",
+            cloudError="Could not sync the cloud save.",cloudErrorDetail="Cloud save error: %s",cloudSaved="Cloud save synced.",
         },
         app_15p={
             color="Color",

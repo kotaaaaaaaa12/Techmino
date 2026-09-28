@@ -794,6 +794,10 @@ return {
             checkEmail="Konfirmasikan akun melalui email, lalu kembali ke sini untuk login.",authFailed="Autentikasi gagal.",
             creatingGuest="Membuat sesi tamu...",guestFailed="Sesi tamu tidak dapat dibuat.",
             signInRequired="Login sebelum menggunakan mode multipemain.",sessionExpired="Sesi Anda telah berakhir. Silakan login kembali.",
+            cloudSave="Simpan cloud",syncNow="Sinkronkan sekarang",useThisDevice="Gunakan perangkat ini",useCloudSave="Gunakan simpanan cloud",
+            cloudChecking="Memeriksa simpanan cloud...",cloudNotSignedIn="Login untuk menggunakan simpanan cloud.",cloudSyncing="Menyinkronkan simpanan cloud...",cloudPending="Menunggu sinkronisasi...",
+            cloudConflict="Perangkat ini dan cloud memiliki simpanan berbeda. Pilih yang ingin disimpan.",cloudSynced="Terakhir disinkronkan: %s",cloudUnknownTime="Waktu tidak diketahui",cloudRestored="Simpanan cloud dipulihkan. Memuat ulang...",cloudIdle="Simpanan cloud belum dibuat.",
+            cloudError="Simpanan cloud tidak dapat disinkronkan.",cloudErrorDetail="Kesalahan simpanan cloud: %s",cloudSaved="Simpanan cloud disinkronkan.",
         },
         app_15p={
             color="Warna",

@@ -741,6 +741,10 @@ return {
             checkEmail="Confirm the account by email, then sign in.",authFailed="Authentication failed.",
             creatingGuest="Creating guest session...",guestFailed="Guest session creation failed.",
             signInRequired="Sign in before multiplayer.",sessionExpired="Session expired. Sign in again.",
+            cloudSave="CloudSave",syncNow="syncNow()",useThisDevice="useLocalSave()",useCloudSave="useCloudSave()",
+            cloudChecking="Checking cloud save...",cloudNotSignedIn="Sign in to use cloud saves.",cloudSyncing="CloudSave.sync()...",cloudPending="CloudSave.pending",
+            cloudConflict="CloudSave conflict: choose local or cloud.",cloudSynced="lastSynced = %s",cloudUnknownTime="unknown",cloudRestored="CloudSave restored. Reloading...",cloudIdle="CloudSave not created.",
+            cloudError="CloudSave.sync() failed.",cloudErrorDetail="CloudSave error: %s",cloudSaved="CloudSave synced.",
         },
         app_15p={
             color="Color",

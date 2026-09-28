@@ -838,6 +838,10 @@ C. ゲームパッド
             checkEmail="確認メールを開いてから、ここに戻ってログインしてください。",authFailed="認証に失敗しました。",
             creatingGuest="ゲストセッションを作成中...",guestFailed="ゲストセッションを作成できませんでした。",
             signInRequired="マルチプレイを利用するにはログインしてください。",sessionExpired="セッションの有効期限が切れました。もう一度ログインしてください。",
+            cloudSave="クラウドセーブ",syncNow="今すぐ同期",useThisDevice="この端末を使用",useCloudSave="クラウドを使用",
+            cloudChecking="クラウドセーブを確認中...",cloudNotSignedIn="クラウドセーブを使うにはログインしてください。",cloudSyncing="クラウドセーブを同期中...",cloudPending="同期を待機中...",
+            cloudConflict="この端末とクラウドに異なるセーブがあります。残す方を選んでください。",cloudSynced="最終同期: %s",cloudUnknownTime="時刻不明",cloudRestored="クラウドセーブを復元しました。再読み込み中...",cloudIdle="クラウドセーブはまだ作成されていません。",
+            cloudError="クラウドセーブを同期できませんでした。",cloudErrorDetail="クラウドセーブエラー: %s",cloudSaved="クラウドセーブを同期しました。",
         },
         app_15p={
             color="色",

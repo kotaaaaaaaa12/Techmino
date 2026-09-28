@@ -822,6 +822,10 @@ return {
             checkEmail="请通过邮件确认帐户，然后返回此处登录。",authFailed="身份验证失败。",
             creatingGuest="正在创建访客会话...",guestFailed="无法创建访客会话。",
             signInRequired="请先登录再使用多人游戏。",sessionExpired="会话已过期，请重新登录。",
+            cloudSave="云存档",syncNow="立即同步",useThisDevice="使用此设备",useCloudSave="使用云存档",
+            cloudChecking="正在检查云存档...",cloudNotSignedIn="登录后可使用云存档。",cloudSyncing="正在同步云存档...",cloudPending="等待同步...",
+            cloudConflict="此设备和云端的存档不同。请选择要保留的存档。",cloudSynced="上次同步：%s",cloudUnknownTime="时间未知",cloudRestored="已恢复云存档，正在重新加载...",cloudIdle="尚未创建云存档。",
+            cloudError="无法同步云存档。",cloudErrorDetail="云存档错误：%s",cloudSaved="云存档已同步。",
         },
         app_15p={
             color="颜色",

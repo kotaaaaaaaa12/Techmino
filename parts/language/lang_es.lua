@@ -785,6 +785,10 @@ return {
             checkEmail="Confirma la cuenta desde tu correo y vuelve aquí para iniciar sesión.",authFailed="Error de autenticación.",
             creatingGuest="Creando sesión de invitado...",guestFailed="No se pudo crear la sesión de invitado.",
             signInRequired="Inicia sesión antes de usar el modo multijugador.",sessionExpired="Tu sesión ha caducado. Inicia sesión de nuevo.",
+            cloudSave="Guardado en la nube",syncNow="Sincronizar ahora",useThisDevice="Usar este dispositivo",useCloudSave="Usar guardado en la nube",
+            cloudChecking="Comprobando el guardado en la nube...",cloudNotSignedIn="Inicia sesión para usar el guardado en la nube.",cloudSyncing="Sincronizando el guardado en la nube...",cloudPending="Esperando para sincronizar...",
+            cloudConflict="Este dispositivo y la nube tienen guardados diferentes. Elige cuál conservar.",cloudSynced="Última sincronización: %s",cloudUnknownTime="Hora desconocida",cloudRestored="Guardado en la nube restaurado. Recargando...",cloudIdle="Todavía no se ha creado un guardado en la nube.",
+            cloudError="No se pudo sincronizar el guardado en la nube.",cloudErrorDetail="Error del guardado en la nube: %s",cloudSaved="Guardado en la nube sincronizado.",
         },
         app_15p={
             color="Color",

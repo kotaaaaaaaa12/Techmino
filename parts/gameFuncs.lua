@@ -78,6 +78,12 @@ do-- function loadFile(name,args), function saveFile(data,name,args)
         local text=text or t
         local res,mes=pcall(FILE.save,data,name,args)
         if res then
+            if SYSTEM=='Web' then
+                JS.callJS(('TechminoCloudSave.fileSaved(%s,%s)'):format(
+                    JSON.encode(love.filesystem.getSaveDirectory()),
+                    JSON.encode(name)
+                ))
+            end
             return true
         else
             MES.new('error',

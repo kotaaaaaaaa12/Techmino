@@ -835,6 +835,10 @@ C. Tay cầm chơi game (Gamepad):
             checkEmail="Xác nhận tài khoản trong email, sau đó quay lại đây để đăng nhập.",authFailed="Xác thực thất bại.",
             creatingGuest="Đang tạo phiên khách...",guestFailed="Không thể tạo phiên khách.",
             signInRequired="Hãy đăng nhập trước khi chơi nhiều người.",sessionExpired="Phiên của bạn đã hết hạn. Hãy đăng nhập lại.",
+            cloudSave="Lưu trên đám mây",syncNow="Đồng bộ ngay",useThisDevice="Dùng thiết bị này",useCloudSave="Dùng bản lưu đám mây",
+            cloudChecking="Đang kiểm tra bản lưu đám mây...",cloudNotSignedIn="Đăng nhập để dùng bản lưu đám mây.",cloudSyncing="Đang đồng bộ bản lưu đám mây...",cloudPending="Đang chờ đồng bộ...",
+            cloudConflict="Thiết bị này và đám mây có bản lưu khác nhau. Hãy chọn bản muốn giữ.",cloudSynced="Đồng bộ lần cuối: %s",cloudUnknownTime="Không rõ thời gian",cloudRestored="Đã khôi phục bản lưu đám mây. Đang tải lại...",cloudIdle="Chưa có bản lưu đám mây.",
+            cloudError="Không thể đồng bộ bản lưu đám mây.",cloudErrorDetail="Lỗi bản lưu đám mây: %s",cloudSaved="Đã đồng bộ bản lưu đám mây.",
         },
         app_15p={
             color="Màu",

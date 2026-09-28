@@ -759,6 +759,10 @@ return {
             checkEmail="Confirmez le compte depuis votre e-mail, puis revenez ici pour vous connecter.",authFailed="Échec de l'authentification.",
             creatingGuest="Création de la session invité...",guestFailed="Impossible de créer la session invité.",
             signInRequired="Connectez-vous avant d'utiliser le mode multijoueur.",sessionExpired="Votre session a expiré. Reconnectez-vous.",
+            cloudSave="Sauvegarde cloud",syncNow="Synchroniser",useThisDevice="Utiliser cet appareil",useCloudSave="Utiliser le cloud",
+            cloudChecking="Vérification de la sauvegarde cloud...",cloudNotSignedIn="Connectez-vous pour utiliser les sauvegardes cloud.",cloudSyncing="Synchronisation de la sauvegarde cloud...",cloudPending="En attente de synchronisation...",
+            cloudConflict="Cet appareil et le cloud ont des sauvegardes différentes. Choisissez celle à conserver.",cloudSynced="Dernière synchronisation : %s",cloudUnknownTime="Heure inconnue",cloudRestored="Sauvegarde cloud restaurée. Rechargement...",cloudIdle="Aucune sauvegarde cloud n'a encore été créée.",
+            cloudError="Impossible de synchroniser la sauvegarde cloud.",cloudErrorDetail="Erreur de sauvegarde cloud : %s",cloudSaved="Sauvegarde cloud synchronisée.",
         },
         app_15p={
             color="Couleur",

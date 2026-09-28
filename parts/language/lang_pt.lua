@@ -783,6 +783,10 @@ return {
             checkEmail="Confirme a conta pelo e-mail e volte aqui para entrar.",authFailed="Falha na autenticação.",
             creatingGuest="Criando sessão de convidado...",guestFailed="Não foi possível criar a sessão de convidado.",
             signInRequired="Entre antes de usar o modo multijogador.",sessionExpired="Sua sessão expirou. Entre novamente.",
+            cloudSave="Salvamento na nuvem",syncNow="Sincronizar agora",useThisDevice="Usar este dispositivo",useCloudSave="Usar salvamento na nuvem",
+            cloudChecking="Verificando o salvamento na nuvem...",cloudNotSignedIn="Entre para usar salvamentos na nuvem.",cloudSyncing="Sincronizando o salvamento na nuvem...",cloudPending="Aguardando sincronização...",
+            cloudConflict="Este dispositivo e a nuvem têm salvamentos diferentes. Escolha qual manter.",cloudSynced="Última sincronização: %s",cloudUnknownTime="Hora desconhecida",cloudRestored="Salvamento na nuvem restaurado. Recarregando...",cloudIdle="Ainda não existe um salvamento na nuvem.",
+            cloudError="Não foi possível sincronizar o salvamento na nuvem.",cloudErrorDetail="Erro no salvamento na nuvem: %s",cloudSaved="Salvamento na nuvem sincronizado.",
         },
         app_15p={
             C="Cor",

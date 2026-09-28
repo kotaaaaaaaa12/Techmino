@@ -793,6 +793,10 @@ return {
             checkEmail="請透過郵件確認賬戶，然後返回此處登入。",authFailed="驗證失敗。",
             creatingGuest="正在建立訪客工作階段...",guestFailed="無法建立訪客工作階段。",
             signInRequired="請先登入再使用多人遊戲。",sessionExpired="工作階段已過期，請重新登入。",
+            cloudSave="雲端存檔",syncNow="立即同步",useThisDevice="使用此裝置",useCloudSave="使用雲端存檔",
+            cloudChecking="正在檢查雲端存檔...",cloudNotSignedIn="登入後可使用雲端存檔。",cloudSyncing="正在同步雲端存檔...",cloudPending="等待同步...",
+            cloudConflict="此裝置和雲端的存檔不同。請選擇要保留的存檔。",cloudSynced="上次同步：%s",cloudUnknownTime="時間未知",cloudRestored="已還原雲端存檔，正在重新載入...",cloudIdle="尚未建立雲端存檔。",
+            cloudError="無法同步雲端存檔。",cloudErrorDetail="雲端存檔錯誤：%s",cloudSaved="雲端存檔已同步。",
         },
         app_15p={
             color="顏色",
