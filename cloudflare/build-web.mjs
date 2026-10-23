@@ -7,8 +7,8 @@ import { fileURLToPath } from "node:url";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outputDirectory = path.join(projectRoot, "dist");
-const serverUrl = normalizeServerUrl(process.env.TECHMINO_SERVER_URL);
-const buildId = normalizeBuildId(process.env.CF_PAGES_COMMIT_SHA || randomUUID());
+const serverUrl = normalizeServerUrl(process.env.TECHMINO_SERVER_URL || "https://techrater.what-the-fuck.men");
+const buildId = normalizeBuildId(process.env.CF_PAGES_COMMIT_SHA || process.env.WORKERS_CI_COMMIT_SHA || randomUUID());
 const stagingDirectory = await mkdtemp(path.join(os.tmpdir(), "techmino-web-"));
 
 const sourceDirectories = ["media", "parts", "Zframework"];

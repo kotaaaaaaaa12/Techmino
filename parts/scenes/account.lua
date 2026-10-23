@@ -35,7 +35,7 @@ local function refreshAccount()
             elseif info.state=='guest' then
                 accountStatus=T.guestAccount
             elseif info.state=='signed-in' then
-                accountStatus=T.signedInAs:format(info.email or '')
+                accountStatus=T.signedInAs:format(info.id or '')
             else
                 accountStatus=T.statusUnavailable
             end

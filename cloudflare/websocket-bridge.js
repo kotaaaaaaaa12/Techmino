@@ -6,7 +6,7 @@
 
   const sockets = new Map();
   const guestNameKey = "techmino.guestName";
-  const refreshTokenKey = "techmino.supabaseRefreshToken";
+  const sessionTokenKey = "techmino.sessionToken";
   const accountKey = "techmino.account";
   const cloudSaveMetaPrefix = "techmino.cloudSaveMeta";
   const cloudSaveFixedFiles = Object.freeze([
@@ -26,22 +26,25 @@
   const defaultAccountStrings = Object.freeze({
     title: "Account",
     choosePlay: "Sign in to play",
-    intro: "Sign in with email or Google to use multiplayer.",
+    intro: "Sign in with your ID and password to use multiplayer.",
     signedInAs: "Signed in as %s",
     signInPrompt: "Sign in to keep the same account across devices.",
     close: "Close",
-    emailAddress: "Email address",
+    accountId: "ID",
+    accountName: "Account name",
     passwordHint: "Password (8 characters minimum)",
     signIn: "Sign in",
     createAccount: "Create account",
-    continueGoogle: "Continue with Google",
+    registrationPrompt: "Choose an ID, account name, and password.",
     signOut: "Sign out",
     signInRequired: "Sign in before using multiplayer.",
     sessionExpired: "Your session expired. Sign in again.",
-    invalidCredentials: "Enter a valid email address and a password with at least 8 characters.",
+    invalidCredentials: "Enter a valid ID and a password with at least 8 characters.",
+    invalidRegistration: "Enter a valid ID, account name, and password with at least 8 characters.",
+    idTaken: "This ID is already taken.",
+    rateLimited: "Too many sign-in attempts. Try again later.",
     signingIn: "Signing in...",
     creatingAccount: "Creating account...",
-    checkEmail: "Check your email to confirm the account, then return here and sign in.",
     authFailed: "Authentication failed.",
   });
   let accountNotice = "";
@@ -230,6 +233,15 @@
     }
   }
 
+  function storedSessionToken() {
+    return getStoredValue(sessionTokenKey);
+  }
+
+  function clearStoredSession() {
+    removeStoredValue(sessionTokenKey);
+    removeStoredValue(accountKey);
+  }
+
   function storedAccount() {
     try {
       const value = getStoredValue(accountKey);
@@ -303,7 +315,7 @@
     if (!name || name.length > 24) {
       throw new Error("Display name must be between 1 and 24 characters.");
     }
-    const refreshToken = getStoredValue(refreshTokenKey);
+    const refreshToken = storedSessionToken();
     if (!refreshToken) throw new Error("Sign in or create a guest session first.");
 
     const response = await fetch(`${serverUrl}/_worker/auth/profile`, {
@@ -316,7 +328,7 @@
       throw new Error(typeof result.error === "string" ? result.error : `Could not save the display name (${response.status}).`);
     }
     if (typeof result.refreshToken === "string" && result.refreshToken) {
-      setStoredValue(refreshTokenKey, result.refreshToken);
+      setStoredValue(sessionTokenKey, result.refreshToken);
     }
     storeAccount(result.account);
     setStoredValue(guestNameKey, name);
@@ -324,37 +336,38 @@
   }
 
   async function createSession(authRequest) {
-    const refreshToken = authRequest ? null : getStoredValue(refreshTokenKey);
+    const refreshToken = authRequest ? null : storedSessionToken();
     if (!authRequest && !refreshToken) {
       throw new SignInRequiredError(accountStrings.signInRequired);
     }
     const response = await requestSession(authRequest || { refreshToken });
     if (!response.ok && refreshToken && !authRequest) {
-      removeStoredValue(refreshTokenKey);
-      removeStoredValue(accountKey);
+      clearStoredSession();
       throw new SignInRequiredError(accountStrings.sessionExpired);
     }
     if (!response.ok) {
       let reason = `Authentication failed (${response.status})`;
+      let code = "auth_failed";
       try {
         const body = await response.json();
         if (typeof body.error === "string" && body.error) reason = body.error;
+        if (typeof body.code === "string" && body.code) code = body.code;
       } catch {
         // Keep the HTTP status when the server does not return JSON.
       }
-      throw new Error(reason);
+      const error = new Error(reason);
+      error.authCode = code;
+      throw error;
     }
     const session = await response.json();
-    if (session.confirmationRequired) return session;
     if (!session.refreshToken || !session.accessToken || !session.playerId) {
       throw new Error("The authentication server returned an incomplete session.");
     }
     if (session.account?.isAnonymous) {
-      removeStoredValue(refreshTokenKey);
-      removeStoredValue(accountKey);
+      clearStoredSession();
       throw new SignInRequiredError(accountStrings.signInRequired);
     }
-    setStoredValue(refreshTokenKey, session.refreshToken);
+    setStoredValue(sessionTokenKey, session.refreshToken);
     storeAccount({ ...session.account, playerId: session.playerId });
     return session;
   }
@@ -392,19 +405,18 @@
 
   function hasStoredIdentity() {
     const account = storedAccount();
-    return Boolean(account && !account.isAnonymous && getStoredValue(refreshTokenKey));
+    return Boolean(account?.id && !account.isAnonymous && storedSessionToken());
   }
 
   function clearAnonymousIdentity() {
     if (storedAccount()?.isAnonymous) {
-      removeStoredValue(refreshTokenKey);
-      removeStoredValue(accountKey);
+      clearStoredSession();
     }
   }
 
   function cloudSaveAccountId() {
     const account = storedAccount();
-    return account?.playerId || account?.email || null;
+    return account?.playerId || account?.id || null;
   }
 
   function cloudSaveMetaKey() {
@@ -501,7 +513,7 @@
   }
 
   async function cloudSaveRequest(path, body) {
-    const refreshToken = getStoredValue(refreshTokenKey);
+    const refreshToken = storedSessionToken();
     if (!refreshToken) throw new SignInRequiredError(accountStrings.signInRequired);
     const response = await fetch(`${serverUrl}${path}`, {
       method: "POST",
@@ -510,7 +522,7 @@
     });
     const result = await response.json().catch(() => ({}));
     if (typeof result.refreshToken === "string" && result.refreshToken) {
-      setStoredValue(refreshTokenKey, result.refreshToken);
+      setStoredValue(sessionTokenKey, result.refreshToken);
     }
     if (!response.ok) {
       const error = new Error(typeof result.error === "string" ? result.error : `Cloud save request failed (${response.status}).`);
@@ -728,7 +740,6 @@
     });
     overlay.id = accountOverlayId;
 
-    // Keep Love.js input handlers from consuming form input on mobile browsers.
     for (const eventName of [
       "keydown",
       "keyup",
@@ -779,10 +790,10 @@
       color: "#d4d4d4",
       lineHeight: "1.5",
     });
-    accountText.textContent = initialChoice
-      ? labels.intro
-      : account?.email
-        ? formatAccountText(labels.signedInAs, account.email)
+    accountText.textContent = account?.id
+      ? formatAccountText(labels.signedInAs, account.id)
+      : initialChoice
+        ? labels.intro
         : labels.signInPrompt;
 
     const status = style(document.createElement("div"), {
@@ -813,11 +824,33 @@
       WebkitUserSelect: "text",
       WebkitAppearance: "none",
     };
-    const email = style(document.createElement("input"), inputStyle);
-    email.type = "email";
-    email.autocomplete = "email";
-    email.placeholder = labels.emailAddress;
-    email.setAttribute("aria-label", labels.emailAddress);
+
+    const form = style(document.createElement("div"), {
+      display: account?.id ? "none" : "block",
+    });
+    const modeActions = style(document.createElement("div"), {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: "8px",
+      marginBottom: "12px",
+    });
+    const signInModeButton = accountButton(labels.signIn, true);
+    const registerModeButton = accountButton(labels.createAccount);
+    modeActions.append(signInModeButton, registerModeButton);
+
+    const loginId = style(document.createElement("input"), inputStyle);
+    loginId.type = "text";
+    loginId.autocomplete = "username";
+    loginId.autocapitalize = "none";
+    loginId.spellcheck = false;
+    loginId.placeholder = labels.accountId;
+    loginId.setAttribute("aria-label", labels.accountId);
+
+    const accountName = style(document.createElement("input"), { ...inputStyle, marginTop: "10px" });
+    accountName.type = "text";
+    accountName.autocomplete = "nickname";
+    accountName.placeholder = labels.accountName;
+    accountName.setAttribute("aria-label", labels.accountName);
 
     const password = style(document.createElement("input"), { ...inputStyle, marginTop: "10px" });
     password.type = "password";
@@ -825,28 +858,11 @@
     password.placeholder = labels.passwordHint;
     password.setAttribute("aria-label", labels.passwordHint);
 
-    const emailActions = style(document.createElement("div"), {
-      display: "grid",
-      gridTemplateColumns: "1fr 1fr",
-      gap: "10px",
-      marginTop: "12px",
-    });
-    const signInButton = accountButton(labels.signIn, true);
-    const signUpButton = accountButton(labels.createAccount);
-    emailActions.append(signInButton, signUpButton);
+    const submitButton = accountButton(labels.signIn, true);
+    submitButton.style.width = "100%";
+    submitButton.style.marginTop = "12px";
 
-    const divider = style(document.createElement("div"), {
-      margin: "18px 0",
-      borderTop: "1px solid #404040",
-    });
-    const providerActions = style(document.createElement("div"), {
-      display: "grid",
-      gap: "10px",
-    });
-    const googleButton = accountButton(labels.continueGoogle);
-    const signOutButton = accountButton(labels.signOut);
-    providerActions.append(googleButton);
-    if (account && !account.isAnonymous) providerActions.append(signOutButton);
+    let mode = "login";
 
     function setStatus(text, isError = false) {
       status.style.display = "block";
@@ -854,75 +870,98 @@
       status.textContent = text;
     }
 
-    async function emailAuth(mode) {
-      const emailValue = email.value.trim();
+    function setMode(nextMode) {
+      mode = nextMode;
+      const registering = mode === "register";
+      accountName.style.display = registering ? "block" : "none";
+      password.autocomplete = registering ? "new-password" : "current-password";
+      accountText.textContent = registering ? labels.registrationPrompt : labels.intro;
+      submitButton.textContent = registering ? labels.createAccount : labels.signIn;
+      signInModeButton.style.background = registering ? "#262626" : "#2563eb";
+      registerModeButton.style.background = registering ? "#2563eb" : "#262626";
+      status.style.display = "none";
+    }
+
+    function localizedAuthError(error) {
+      if (!(error instanceof Error)) return labels.authFailed;
+      if (error.authCode === "id_taken") return labels.idTaken;
+      if (error.authCode === "rate_limited") return labels.rateLimited;
+      if (error.authCode === "invalid_id" || error.authCode === "invalid_password") {
+        return mode === "register" ? labels.invalidRegistration : labels.invalidCredentials;
+      }
+      if (error.authCode === "invalid_account_name") return labels.invalidRegistration;
+      return error.message || labels.authFailed;
+    }
+
+    async function submitAuth() {
+      if (submitButton.disabled) return;
+      const loginIdValue = loginId.value.trim();
+      const accountNameValue = accountName.value.trim();
       const passwordValue = password.value;
-      if (!emailValue || passwordValue.length < 8) {
-        setStatus(labels.invalidCredentials, true);
+      const validId = /^[A-Za-z0-9][A-Za-z0-9_.-]{3,31}$/.test(loginIdValue);
+      if (!validId || passwordValue.length < 8 || (mode === "register" && !accountNameValue)) {
+        setStatus(mode === "register" ? labels.invalidRegistration : labels.invalidCredentials, true);
         return;
       }
-      signInButton.disabled = true;
-      signUpButton.disabled = true;
-      setStatus(mode === "email-sign-in" ? labels.signingIn : labels.creatingAccount);
+      submitButton.disabled = true;
+      signInModeButton.disabled = true;
+      registerModeButton.disabled = true;
+      setStatus(mode === "login" ? labels.signingIn : labels.creatingAccount);
       try {
-        const session = await createSession({ mode, email: emailValue, password: passwordValue });
-        if (session.confirmationRequired) {
-          password.value = "";
-          setStatus(labels.checkEmail);
-          return;
-        }
+        await createSession({
+          mode,
+          loginId: loginIdValue,
+          accountName: mode === "register" ? accountNameValue : undefined,
+          password: passwordValue,
+        });
         globalThis.location.reload();
       } catch (error) {
-        setStatus(error instanceof Error ? error.message : labels.authFailed, true);
+        setStatus(localizedAuthError(error), true);
       } finally {
-        signInButton.disabled = false;
-        signUpButton.disabled = false;
+        submitButton.disabled = false;
+        signInModeButton.disabled = false;
+        registerModeButton.disabled = false;
       }
     }
 
-    signInButton.addEventListener("click", () => emailAuth("email-sign-in"));
-    signUpButton.addEventListener("click", () => emailAuth("email-sign-up"));
-    googleButton.addEventListener("click", () => {
-      const returnTo = `${globalThis.location.origin}${globalThis.location.pathname}`;
-      const url = new URL("/_worker/auth/google", serverUrl);
-      url.searchParams.set("return_to", returnTo);
-      globalThis.location.assign(url.href);
-    });
-    signOutButton.addEventListener("click", () => {
-      removeStoredValue(refreshTokenKey);
-      removeStoredValue(accountKey);
-      globalThis.location.reload();
-    });
+    signInModeButton.addEventListener("click", () => setMode("login"));
+    registerModeButton.addEventListener("click", () => setMode("register"));
+    submitButton.addEventListener("click", submitAuth);
+    for (const input of [loginId, accountName, password]) {
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") submitAuth();
+      });
+    }
 
-    panel.append(header, accountText, status, email, password, emailActions, divider, providerActions);
+    form.append(modeActions, loginId, accountName, password, submitButton);
+    setMode("login");
+
+    const signedInActions = style(document.createElement("div"), {
+      display: account?.id ? "grid" : "none",
+      gap: "10px",
+    });
+    const signOutButton = accountButton(labels.signOut);
+    signOutButton.addEventListener("click", async () => {
+      const refreshToken = storedSessionToken();
+      try {
+        if (refreshToken) {
+          await fetch(`${serverUrl}/_worker/auth/logout`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ refreshToken }),
+            keepalive: true,
+          });
+        }
+      } finally {
+        clearStoredSession();
+        globalThis.location.reload();
+      }
+    });
+    signedInActions.append(signOutButton);
+
+    panel.append(header, accountText, status, form, signedInActions);
     overlay.append(panel);
     document.body.append(overlay);
-  }
-
-  async function handleOAuthCallback() {
-    const query = new URLSearchParams(globalThis.location.search);
-    if (query.get("techmino_auth") !== "google") return;
-
-    const hash = new URLSearchParams(globalThis.location.hash.slice(1));
-    const refreshToken = hash.get("refresh_token");
-    const authError = hash.get("error_description") || hash.get("error");
-    const cleanUrl = `${globalThis.location.origin}${globalThis.location.pathname}`;
-    globalThis.history.replaceState(null, "", cleanUrl);
-
-    if (authError) {
-      accountNotice = authError;
-    } else if (!refreshToken) {
-      accountNotice = "Google did not return a usable session.";
-    } else {
-      removeStoredValue(accountKey);
-      setStoredValue(refreshTokenKey, refreshToken);
-      try {
-        await createSession();
-        accountNotice = "Google sign-in completed.";
-      } catch (error) {
-        accountNotice = error instanceof Error ? error.message : "Google sign-in failed.";
-      }
-    }
   }
 
   function initializeAccountUI() {
@@ -1033,13 +1072,11 @@
     sockets.delete(name);
   }
 
-  handleOAuthCallback().finally(() => {
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", initializeAccountUI, { once: true });
-    } else {
-      initializeAccountUI();
-    }
-  });
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initializeAccountUI, { once: true });
+  } else {
+    initializeAccountUI();
+  }
 
   globalThis.TechminoAccount = {
     setStrings(strings) {
@@ -1059,7 +1096,11 @@
     getAccountInfo() {
       const account = storedAccount();
       if (!account || account.isAnonymous) return JSON.stringify({ state: "signed-out" });
-      return JSON.stringify({ state: "signed-in", email: account.email || "" });
+      return JSON.stringify({
+        state: "signed-in",
+        id: account.id || "",
+        accountName: account.displayName || "",
+      });
     },
     async setDisplayName(name) {
       const savedName = await updateDisplayName(name);
